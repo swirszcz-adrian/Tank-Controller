@@ -150,8 +150,10 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-add_executable(arduino_bridge.cpp src/arduino_bridge.cpp)
-add_executable(gamepad_bridge.cpp src/gamepad_bridge.cpp)
+add_executable(arduino_bridge src/arduino_bridge.cpp)
+add_executable(gamepad_bridge src/gamepad_bridge.cpp)
+add_executable(imu_bridge src/imu_bridge.cpp)
+add_executable(display_bridge src/display_bridge.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -161,12 +163,17 @@ add_executable(gamepad_bridge.cpp src/gamepad_bridge.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-add_dependencies(arduino_bridge.cpp tank_controller_generate_messages_cpp)
-add_dependencies(gamepad_bridge.cpp tank_controller_generate_messages_cpp)
+add_dependencies(arduino_bridge tank_controller_generate_messages_cpp)
+add_dependencies(gamepad_bridge tank_controller_generate_messages_cpp)
+add_dependencies(imu_bridge tank_controller_generate_messages_cpp)
+add_dependencies(display_bridge tank_controller_generate_messages_cpp)
+
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(arduino_bridge.cpp ${catkin_LIBRARIES})
-target_link_libraries(gamepad_bridge.cpp ${catkin_LIBRARIES} sfml-graphics)
+target_link_libraries(arduino_bridge ${catkin_LIBRARIES})
+target_link_libraries(gamepad_bridge ${catkin_LIBRARIES} sfml-graphics)
+target_link_libraries(imu_bridge ${catkin_LIBRARIES})
+target_link_libraries(display_bridge ${catkin_LIBRARIES})
 
 #############
 ## Install ##
@@ -178,8 +185,8 @@ target_link_libraries(gamepad_bridge.cpp ${catkin_LIBRARIES} sfml-graphics)
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
-  scripts/arduino_bridge.py
-  scripts/gamepad_bridge.py
+  scripts/arduino_bridge_obsolete.py
+  scripts/gamepad_bridge_obsolete.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

@@ -51,7 +51,9 @@ int main() {
         vector[1] = 0.0f;
         vector[2] = 0.0f;
         bno.getVector(vector, imu::AdafruitBNO055::VectorType::EULER);
-        std::cout << "x=" << vector[0] << "; y=" << vector[1] << "; z=" << vector[2] <<";\n";
+        std::cout << "x=" << std::fixed << std::setw(9) << std::setprecision(2) <<vector[0] 
+                  << "; y=" << std::fixed << std::setw(9) << std::setprecision(2) << vector[1] 
+                  << "; z=" << std::fixed << std::setw(9) << std::setprecision(2) << vector[2] <<";\n";
         imu::delay(IMU_SAMPLERATE_DELAY_MS);
     }
 }

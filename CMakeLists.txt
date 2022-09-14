@@ -25,6 +25,8 @@ find_package(SFML REQUIRED COMPONENTS
   REQUIRED
 )
 
+find_library(WIRING_PI wiringPi /usr/include/wiringPi)
+
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
@@ -121,7 +123,7 @@ generate_messages(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
  INCLUDE_DIRS include
- LIBRARIES sensor_utility
+ LIBRARIES  ${PROJECT_NAME}
  CATKIN_DEPENDS roscpp rospy std_msgs serial message_runtime
 #  DEPENDS system_lib
 )
@@ -139,8 +141,8 @@ include_directories(
 
 ## Declare a C++ library
 add_library(${PROJECT_NAME}
-  src/sensor_utility/i2c_utility.cpp
-  src/sensor_utility/imu_utility.cpp
+  src/tank_controller/i2c_utility.cpp
+  src/tank_controller/imu_utility.cpp
 )
 
 ## Add cmake target dependencies of the library
@@ -173,7 +175,7 @@ add_dependencies(display_bridge tank_controller_generate_messages_cpp)
 ## Specify libraries to link a library or executable target against
 target_link_libraries(arduino_bridge ${catkin_LIBRARIES})
 target_link_libraries(gamepad_bridge ${catkin_LIBRARIES} sfml-graphics)
-target_link_libraries(imu_bridge ${catkin_LIBRARIES})
+target_link_libraries(imu_bridge ${catkin_LIBRARIES} ${PROJECT_NAME} ${WIRING_PI}) 
 target_link_libraries(display_bridge ${catkin_LIBRARIES})
 
 #############
@@ -206,7 +208,7 @@ install(TARGETS ${PROJECT_NAME}
 )
 
 ## Mark cpp header files for installation
-install(DIRECTORY include/sensor_utility/
+install(DIRECTORY include/${PROJECT_NAME}/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
   FILES_MATCHING PATTERN "*.h"
   PATTERN ".svn" EXCLUDE

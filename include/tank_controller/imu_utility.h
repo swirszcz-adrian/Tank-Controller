@@ -35,17 +35,42 @@
 #include <wiringPiI2C.h>
 #include <stdint.h>
 #include <vector>
+#include <iostream>
 
+// OS Specific sleep
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 // Define basic constants
 #define IMU_ADRESS (0x28)
 #define IMU_ID (0xA0)
+#define IMU_OFFSET_REGISTERS (22)
+#define IMU_SAMPLERATE_DELAY_MS (100)
+
+
+namespace imu {
+
+
+/**
+ * @brief Wait for given ammount of time 
+ * @param ms delay time [ms]
+ */
+inline void delay(uint ms) {
+    #ifdef _WIN32
+        Sleep(ms);         
+    #else
+        usleep(ms * 1000);
+    #endif
+}
 
 
 /**
  * @brief Struct holding offset values for Adafruit BNO055 sensor
  */
-struct imuOffsets {
+struct Offsets {
     int16_t accel_x;
     int16_t accel_y;
     int16_t accel_z;
@@ -67,7 +92,7 @@ struct imuOffsets {
 /**
  * @brief Enumeration for storing Adafruit BNO005 sensor's operating modes
  */
-enum imuOperatingMode {
+enum OperatingMode {
     CONFIG = 0X00,
     ACCONLY = 0X01,
     MAGONLY = 0X02,
@@ -87,14 +112,14 @@ enum imuOperatingMode {
 /**
  * @brief Class containing all the necessary components to interface with Adafruit BNO005 IMU sensor via I2C protocol
  */
-class imuAdafruitBNO055 {
+class AdafruitBNO055 {
 public:
     // DATA SECTION
     
     /**
      * @brief List of all registers that will be used when communicating with Adafruit BNO055 sensor
      */
-    enum registers {
+    enum Registers {
         // Basic registers
         CHIP_ID = 0x00,
         ACCEL_REV_ID = 0x01,
@@ -242,7 +267,7 @@ public:
     /**
      * @brief List of sensor's power settings
      */
-    enum powermodes {
+    enum Powermodes {
         NORMAL = 0X00,
         LOWPOWER = 0X01,
         SUSPEND = 0X02
@@ -251,36 +276,36 @@ public:
     /**
      * @brief List of remap settings
      */
-    enum remapConfigs {
-        P0 = 0x21,
-        P1 = 0x24, // default
-        P2 = 0x24,
-        P3 = 0x21,
-        P4 = 0x24,
-        P5 = 0x21,
-        P6 = 0x21,
-        P7 = 0x24
+    enum RemapConfigs {
+        CONFIG_P0 = 0x21,
+        CONFIG_P1 = 0x24, // default
+        CONFIG_P2 = 0x24,
+        CONFIG_P3 = 0x21,
+        CONFIG_P4 = 0x24,
+        CONFIG_P5 = 0x21,
+        CONFIG_P6 = 0x21,
+        CONFIG_P7 = 0x24
     };
 
     /**
      * @brief List of remap signs
      */
-    enum remapSigns {
-        P0 = 0x04,
-        P1 = 0x00, // default
-        P2 = 0x06,
-        P3 = 0x02,
-        P4 = 0x03,
-        P5 = 0x01,
-        P6 = 0x07,
-        P7 = 0x05
+    enum RemapSigns {
+        SIGN_P0 = 0x04,
+        SIGN_P1 = 0x00, // default
+        SIGN_P2 = 0x06,
+        SIGN_P3 = 0x02,
+        SIGN_P4 = 0x03,
+        SIGN_P5 = 0x01,
+        SIGN_P6 = 0x07,
+        SIGN_P7 = 0x05
     };
 
     /**
      * @brief Struct representing revisions
      */
-    struct revisions {
-        uint8_t acceleration;
+    struct Revisions {
+        uint8_t accelerometer;
         uint8_t magnetometer;
         uint8_t gyroscope;
         uint16_t sw;
@@ -290,13 +315,13 @@ public:
     /**
      * @brief List of useful vector mappings
      */
-    enum vectorType {
-        ACCELEROMETER = registers::ACCEL_DATA_X_LSB,
-        MAGNETOMETER = registers::MAG_DATA_X_LSB,
-        GYROSCOPE = registers::GYRO_DATA_X_LSB,
-        EULER = registers::EULER_H_LSB,
-        LINEARACCEL = registers::LINEAR_ACCEL_DATA_X_LSB,
-        GRAVITY = registers::GRAVITY_DATA_X_LSB
+    enum VectorType {
+        ACCELEROMETER = Registers::ACCEL_DATA_X_LSB,
+        MAGNETOMETER = Registers::MAG_DATA_X_LSB,
+        GYROSCOPE = Registers::GYRO_DATA_X_LSB,
+        EULER = Registers::EULER_H_LSB,
+        LINEARACCEL = Registers::LINEAR_ACCEL_DATA_X_LSB,
+        GRAVITY = Registers::GRAVITY_DATA_X_LSB
     };
 
 public:
@@ -307,30 +332,109 @@ public:
      * @param sensorId sensor's id (in most cases it will be -1)
      * @param address sensor's address (can be checked with "gpio i2cdetect" function)
      */
-    imuAdafruitBNO055(int32_t sensor_id = -1, uint8_t address = IMU_ADRESS);
+    AdafruitBNO055(int32_t sensor_id = -1, uint8_t address = IMU_ADRESS);
 
-    bool begin(imuOperatingMode mode = imuOperatingMode::NDOF);
+    /**
+     * @brief Establish connection with device, reset it and switch it to given power mode
+     * @param mode Mode the device will be set into
+     * @return true if initialization was successfull
+     * @return false if initialization failed
+     */
+    bool begin(OperatingMode mode = OperatingMode::NDOF);
 
-    void setMode(imuOperatingMode mode);
+    /**
+     * @brief Put the chip in the specified operating mode
+     * @param mode chosen operating mode
+     */
+    void setMode(OperatingMode mode);
 
-    void getMode(imuOperatingMode &mode);
+    /**
+     * @brief Get the current operating mode and write it into provided buffer
+     * @param mode reference to a buffer which will hold received mode
+     */
+    void getMode(OperatingMode &mode);
 
-    void setAxisRemap(remapConfigs remapcode);
+    /**
+     * @brief Change the chip's axis remap
+     * @param remapcode  desired remap value
+     */
+    void setAxisRemap(RemapConfigs remapcode);
 
-    void setAxisSign(remapSigns remapsign);
+    /**
+     * @brief Change the chip's axis sign
+     * @param remapcsign  desired remap sign
+     */
+    void setAxisSign(RemapSigns remapsign);
 
-    void getRevInfo(revisions &rev);
+    /**
+     * @brief Get the chip revision numbers
+     * @param rev reference to struct, to which revision info will be written into
+     */
+    void getRevInfo(Revisions &rev);
 
+    /**
+     * @brief Use the external 32.768KHz crystal
+     * @param usextal use crystal
+     */
     void setExtCrystalUse(bool usextal);
-
+    
+    /**
+     * @brief Get the latest system status info
+     * @param system_status Reference to write System Status info:  
+     *  0 = Idle;  
+     * 1 = System Error;  
+     * 2 = Initializing Peripherals;  
+     * 3 = System Iniitalization;  
+     * 4 = Executing Self-Test;  
+     * 5 = Sensor fusion algorithm running;  
+     * 6 = System running without fusion algorithms
+     * @param self_test_result Reference to write Self Test results:  
+     *  1 = test passed, 0 = test failed;  
+     *  Bit 0 = Accelerometer self test;  
+     *  Bit 1 = Magnetometer self test;  
+     *  Bit 2 = Gyroscope self test;  
+     *  Bit 3 = MCU self test;  
+     * @param system_error  Reference to write potential system errors
+     *  0 = No error;  
+     *  1 = Peripheral initialization error;  
+     *  2 = System initialization error;  
+     *  3 = Self test result failed;  
+     *  4 = Register map value out of range;  
+     *  5 = Register map address out of range;  
+     *  6 = Register map write error;  
+     *  7 = BNO low power mode not available for selected operat ion mode;  
+     *  8 = Accelerometer power mode not available;  
+     *  9 = Fusion algorithm configuration error;  
+     *  A = Sensor configuration error;  
+     */
     void getSystemStatus(uint8_t &system_status, uint8_t &self_test_result, uint8_t &system_error);
 
-    void getCalibration(uint8_t &system, uint8_t &gyro, uint8_t &accel, uint8_t &mag);
+    /**
+     * @brief Get the current calibration state. Each reference's value will be set to 0 if not calibrated or 3 if fully calibrated
+     * @param system_status reference to which function will write current system calibration status, depends on all sensors
+     * @param gyro reference to which function will write current calibration of gyroscope
+     * @param accel reference to which function will write current calibration of accelerometer
+     * @param mag reference to whichfunction will  write current calibration of magnetometer
+     */
+    void getCalibration(uint8_t &system_status, uint8_t &gyro, uint8_t &accel, uint8_t &mag);
 
-    void getVector(int16_t (&vector)[3], vectorType vector_type);
+    /**
+     * @brief Get a vector reading from the specified source and write it to buffer array
+     * @param vector array to store data into
+     * @param vector_type type of data
+     */
+    void getVector(float vector[3], VectorType vector_type);
 
-    void getQuaternion(int16_t (&vector)[4]);
+    /**
+     * @brief Get a quaternion reading and write it to buffer array
+     * @param vector array to store data into
+     */
+    void getQuaternion(float vector[4]);
 
+    /**
+     * @brief Get temperature in degress Celsius
+     * @param temp reference to value in which temperature will be stored
+     */
     void getTemperature(int8_t &temp);
 
     // bool getEvent(sensorEvent &event);
@@ -339,32 +443,85 @@ public:
 
     // void getSensor(sensorType &sensor);
 
-    bool getSensorOffsets(uint8_t &calib_data);
+    /**
+     * @brief Reads the sensor's offset registers into a byte array
+     * @param calib_data byte array to which data will be saved
+     * @return true if read was successfull
+     * @return false if read failed 
+     */
+    bool getSensorOffsets(uint8_t calib_data[IMU_OFFSET_REGISTERS]);
 
-    bool getSensorOffsets(imuOffsets &offset_type);
+    /**
+     * @brief Reads the sensor's offset registers into an offset struct
+     * @param offset_type struct to which data will be saved
+     * @return true if read was successfull
+     * @return false if read failed
+     */
+    bool getSensorOffsets(Offsets &offset_type);
 
-    void setSensorOffsets(const uint8_t callib_data);
+    /**
+     * @brief Write an array of calibration values to the sensor's offset
+     * @param callib_data calibration data
+     */
+    void setSensorOffsets(const uint8_t calib_data[IMU_OFFSET_REGISTERS]);
 
-    void setSensorOffsets(const imuOffsets offset_type);
+    /**
+     * @brief Write to the sensor's offset registers from an offset struct
+     * @param offset_type offset struct
+     */
+    void setSensorOffsets(const Offsets offset_type);
 
+    /**
+     * @brief Checks if all cal status values are set to 3 (fully calibrated)
+     * @return true if fully calibrated
+     * @return false if not fully calibrated
+     */
     bool isFullyCalibrated();
 
+    /**
+     * @brief Enter suspend (sleep) mode 
+     */
     void enterSuspendMode();
 
+    /**
+     * @brief Enter normal (awake) mode
+     */
     void enterNormalMode();
 
 private:
+    /**
+     * @brief Read byte from chosen register
+     * @param reg register from which to read data
+     * @return uint8_t register data
+     */
+    uint8_t readByte_(Registers reg);
     
-    uint8_t readByte_(registers reg);
+    /**
+     * @brief Read the specified number of bytes, starting from given register
+     * @param reg starting register
+     * @param buffer buffer to which data will be stored
+     * @param len number of bytes to read
+     * @return true if read successfully
+     * @return false if error occured
+     */
+    bool readLen_(Registers reg, uint8_t buffer[], uint8_t len);
     
-    bool readLen_(registers reg, uint8_t (&buffer)[], uint8_t len);
-    
-    bool writeByte_(registers reg, uint8_t value);
+    /**
+     * @brief Write given value to selected register
+     * @param reg register to write into
+     * @param value value to write
+     * @return true if written successfully
+     * @return false if errror occured
+     */
+    bool writeByte_(Registers reg, uint8_t value);
 
     int i2c_handle_;
     int32_t sensor_id_;
-    imuOperatingMode mode_;
+    OperatingMode mode_;
 };
+
+
+}   // namespace imu
 
 
 #endif

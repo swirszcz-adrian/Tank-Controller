@@ -1,4 +1,4 @@
-// ##### WARNING #####
+// ####### WARNING #######
 // THIS NODE CAN ONLY BE RUN ON RASPBERRY PI!
 
 
@@ -33,7 +33,7 @@ int main() {
 
 
 int main() {
-    bno055::ConnectionBridge bno = {};
+    bno055::ConnectionBridge bno = {bno055::OperationMode::OPERATION_MODE_IMUPLUS};
     int temp = 0;
     bno.getTemperature(temp);
     std::cout << "Current temperature is: " << temp << " C" << std::endl;
@@ -41,10 +41,12 @@ int main() {
     bool read_success = false;
     float vector[3] = {};
     while (true) {
-        read_success = bno.getVector(vector, bno055::VectorMappings::VECTOR_EULER);
-        std::cout << "x=" << std::fixed << std::setw(9) << std::setprecision(2) << vector[0] 
+        read_success = bno.getVector(vector, bno055::VectorMappings::VECTOR_ACCELEROMETER);
+        if (read_success) {
+            std::cout << "x=" << std::fixed << std::setw(9) << std::setprecision(2) << vector[0] 
                   << "; y=" << std::fixed << std::setw(9) << std::setprecision(2) << vector[1] 
                   << "; z=" << std::fixed << std::setw(9) << std::setprecision(2) << vector[2] <<";\n";
+        }
         bno055::delay(100);
     }
 }

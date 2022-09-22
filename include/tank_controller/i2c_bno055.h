@@ -12,7 +12,7 @@
 
 
 // Warning: uncomenting the line below will fill your terminal window with debug messages
-#define BNO055_PRINT_DEBUG
+// #define BNO055_PRINT_DEBUG
 
 
 namespace bno055 {

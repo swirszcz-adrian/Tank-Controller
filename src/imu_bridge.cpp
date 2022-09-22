@@ -27,46 +27,25 @@ int main() {
 
 
 #include "ros/ros.h"
-#include "tank_controller/imu_utility.h"
+#include "tank_controller/i2c_bno055.h"
 
 #include <iostream>
 
 
-
 int main() {
-    imu::AdafruitBNO055 bno = imu::AdafruitBNO055();
-    if (!bno.begin()) {
-        return EXIT_FAILURE;
-    }
-
-    imu::delay(1000);
-    int8_t temp = 0;
+    bno055::ConnectionBridge bno = {};
+    int temp = 0;
     bno.getTemperature(temp);
-    std::cout << "Current temperature is: " << (int) temp << " C" << std::endl;
-    
+    std::cout << "Current temperature is: " << temp << " C" << std::endl;
     bno.setExtCrystalUse(true);
-    float vector[3];
-    uint8_t system_status, gyro, accel, mag;
+    bool read_success = false;
+    float vector[3] = {};
     while (true) {
-        vector[0] = 0.0f;
-        vector[1] = 0.0f;
-        vector[2] = 0.0f;
-        system_status = 0U;
-        gyro = 0U;
-        accel = 0U;
-        mag = 0U;
-
-        bno.getVector(vector, imu::AdafruitBNO055::VectorType::EULER);
+        read_success = bno.getVector(vector, bno055::VectorMappings::VECTOR_EULER);
         std::cout << "x=" << std::fixed << std::setw(9) << std::setprecision(2) << vector[0] 
                   << "; y=" << std::fixed << std::setw(9) << std::setprecision(2) << vector[1] 
                   << "; z=" << std::fixed << std::setw(9) << std::setprecision(2) << vector[2] <<";\n";
-
-        bno.getCalibration(system_status, gyro, accel, mag);        
-        std::cout << "sys_calib=" << (int) system_status
-                  << "; gyro_calib=" << (int) gyro
-                  << "; accel_calib=" << (int) accel
-                  << "; mag_calib=" << (int) mag << ";\n";
-        imu::delay(IMU_SAMPLERATE_DELAY_MS);
+        bno055::delay(100);
     }
 }
 

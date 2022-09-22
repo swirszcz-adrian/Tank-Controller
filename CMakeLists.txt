@@ -141,8 +141,7 @@ include_directories(
 
 ## Declare a C++ library
 add_library(${PROJECT_NAME}
-  src/tank_controller/i2c_utility.cpp
-  src/tank_controller/imu_utility.cpp
+  src/tank_controller/i2c_bno055.cpp
 )
 
 ## Add cmake target dependencies of the library
@@ -171,12 +170,11 @@ add_dependencies(gamepad_bridge tank_controller_generate_messages_cpp)
 add_dependencies(imu_bridge tank_controller_generate_messages_cpp)
 add_dependencies(display_bridge tank_controller_generate_messages_cpp)
 
-
 ## Specify libraries to link a library or executable target against
 target_link_libraries(arduino_bridge ${catkin_LIBRARIES})
 target_link_libraries(gamepad_bridge ${catkin_LIBRARIES} sfml-graphics)
-target_link_libraries(imu_bridge ${catkin_LIBRARIES} ${PROJECT_NAME} ${WIRING_PI}) 
-target_link_libraries(display_bridge ${catkin_LIBRARIES})
+target_link_libraries(imu_bridge ${catkin_LIBRARIES} ${PROJECT_NAME} i2c) 
+target_link_libraries(display_bridge ${catkin_LIBRARIES} ${WIRING_PI})
 
 #############
 ## Install ##

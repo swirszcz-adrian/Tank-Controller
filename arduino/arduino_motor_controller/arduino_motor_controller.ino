@@ -11,7 +11,7 @@
 
 
 // Define max and min PWM values
-#define LOWER_BND 48
+#define LOWER_BND 63
 #define UPPER_BND 255
 
 
@@ -159,7 +159,7 @@ public:
     float V = float(distance) / time_delta;
 
     // Low pass filter
-    V_filtered_ = 0.8818f * V_filtered_ + 0.0591f * V + 0.0591f * V_prev_;
+    V_filtered_ = 0.22826f * V_filtered_ + 0.38587f * V + 0.38587f * V_prev_;
     V_prev_ = V;
 
     if (globalStop) {

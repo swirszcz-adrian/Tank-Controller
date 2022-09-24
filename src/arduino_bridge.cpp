@@ -237,7 +237,7 @@ public:
     requested_global_stop_ = req.stop;
     if (req.stop) {
       ROS_INFO("Received request to ACTIVATE global stop");
-      std::cout << std::boolalpha << pi_left_.action << " " << pi_right_.action << std::endl;
+      // std::cout << std::boolalpha << pi_left_.action << " " << pi_right_.action << std::endl;
     } else {
       ROS_INFO("Received request to DEACTIVATE global stop");
     }

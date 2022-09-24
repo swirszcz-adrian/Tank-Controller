@@ -70,6 +70,7 @@ add_message_files(
   motorsData.msg
   motorsManualControl.msg
   motorsAutoControl.msg
+  imuData.msg
 )
 
 ## Generate services in the 'srv' folder
@@ -77,6 +78,7 @@ add_service_files(
   FILES
   globalStop.srv
   motorsParameters.srv
+  imuResetVariables.srv
 )
 
 ## Generate actions in the 'action' folder

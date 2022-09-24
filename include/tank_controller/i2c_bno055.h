@@ -11,7 +11,7 @@
 #include <linux/i2c-dev.h>
 
 
-// Warning: uncomenting the line below will fill your terminal window with debug messages
+// Warning: uncommenting the line below will fill your terminal window with debug messages
 // #define BNO055_PRINT_DEBUG
 
 

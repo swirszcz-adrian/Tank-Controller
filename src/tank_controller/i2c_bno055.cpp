@@ -655,13 +655,15 @@ bool ConnectionBridge::i2cWrite_(const Registers reg, const byte data) {
 
 
 bool ConnectionBridge::i2cRead_(const Registers start_reg, byte buffer[], const size_t len) {
+    // if (write(i2c_handle_, &start_reg, 1) != 1) {
+    //     #ifdef BNO055_PRINT_DEBUG
+    //         fprintf(stderr, "DEBUG-WARN: Failed to request read from registers: 0x%.2X .. 0x%.2X\n", start_reg, start_reg + len);
+    //     #endif
+    //     return false;
+    // }
+
     // To read data you first need to write the register from which reading will start
-    if (write(i2c_handle_, &start_reg, 1) != 1) {
-        #ifdef BNO055_PRINT_DEBUG
-            fprintf(stderr, "DEBUG-WARN: Failed to request read from registers: 0x%.2X .. 0x%.2X\n", start_reg, start_reg + len);
-        #endif
-        return false;
-    }
+    write(i2c_handle_, &start_reg, 1);
 
     // Read data and check whether operation succeeded
     if (read(i2c_handle_, buffer, len) != len) {
@@ -676,13 +678,15 @@ bool ConnectionBridge::i2cRead_(const Registers start_reg, byte buffer[], const 
 
 
 bool ConnectionBridge::i2cRead_(const Registers reg, byte &buffer) {
+    // if (write(i2c_handle_, &reg, 1) != 1) {
+    //     #ifdef BNO055_PRINT_DEBUG
+    //         fprintf(stderr, "DEBUG-WARN: Failed to request read from register: 0x%.2X \n", reg);
+    //     #endif
+    //     return false;
+    // }
+
     // Write register from which data will be read
-    if (write(i2c_handle_, &reg, 1) != 1) {
-        #ifdef BNO055_PRINT_DEBUG
-            fprintf(stderr, "DEBUG-WARN: Failed to request read from register: 0x%.2X \n", reg);
-        #endif
-        return false;
-    }
+    write(i2c_handle_, &reg, 1);
 
     // Read data and check whether operation succeeded
     if (read(i2c_handle_, &buffer, 1) != 1) {

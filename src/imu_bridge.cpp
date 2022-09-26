@@ -135,7 +135,6 @@ public:
              , linear_prev_()
              , angular_filtered_()
              , angular_prev_()
-             , gravity_()
              , accel_prev_() {
         ROS_INFO("Starting up %s node:", node_name_.c_str());
 
@@ -204,14 +203,6 @@ public:
         Vector angular = {};
         Vector linear = {};
 
-        // Update gravity data
-        if (bno_ptr_->getVector(angular_buffer, VectorMappings::VECTOR_GRAVITY)) {
-            // Assign correct values and multiply some of them by -1
-            gravity_.x = gravity_buffer[0];
-            gravity_.y = -gravity_buffer[1];
-            gravity_.z = -gravity_buffer[2];
-        }
-
         // Read angular data. If read didn't succeeed, use data from previous loop
         if (bno_ptr_->getVector(angular_buffer, VectorMappings::VECTOR_GYROSCOPE)) {
             // For angular data we only need to assign correct values to correct variables
@@ -223,11 +214,12 @@ public:
         }
 
         // Read linear data. If read didn't succeeed, use data from previous loop
-        if (bno_ptr_->getVector(linear_buffer, VectorMappings::VECTOR_ACCELEROMETER)) {
-            // For linear data we need to assign correct values to correct variables and subtract gravity
-            linear.x = linear_buffer[0] - gravity_.x;
-            linear.y = -linear_buffer[1] - gravity_.y;
-            linear.z = -linear_buffer[2] - gravity_.z;
+        if (bno_ptr_->getVector(linear_buffer, VectorMappings::VECTOR_LINEARACCEL)) {
+            // For linear data we need to assign correct values to correct variables
+            // Since we read linear acceleration data, we don't need to subtract gravity values (sensor does that for us)
+            linear.x = linear_buffer[0];
+            linear.y = -linear_buffer[1];
+            linear.z = -linear_buffer[2];
 
             // Update previous acceleration
             // This wasn't done in angular velocity, since back then we didn't need two vectors for storing old data
@@ -329,7 +321,6 @@ private:
         angular_filtered_.setZero();
         angular_prev_.setZero();
 
-        gravity_.setZero();
         accel_prev_.setZero();
     }
 
@@ -342,7 +333,6 @@ private:
     Vector angular_filtered_;
     Vector angular_prev_;
     
-    Vector gravity_;
     Vector accel_prev_;
 
     std::unique_ptr<ConnectionBridge> bno_ptr_;
@@ -358,42 +348,42 @@ private:
 
 
 int main() {
-    ImuBridge imu_bridge = {};
-    return imu_bridge.run();
-}
-
-//     ConnectionBridge bno = {OperationMode::OPERATION_MODE_IMUPLUS};
-//     bno.setExtCrystalUse(true);
-//     float accel_vec[3] = {};
-//     float gyro_vec[3] = {};
-//     byte sys_stat = 0;
-//     byte gyro = 0;
-//     byte accel = 0;
-//     byte mag = 0;
-//     bool fully_calib = false;
-
-//     while (true) {
-//         bno.getVector(accel_vec, VectorMappings::VECTOR_ACCELEROMETER);
-//         bno.getVector(gyro_vec, VectorMappings::VECTOR_GRAVITY); 
-//         // bno.getCalibration(sys_stat, gyro, accel, mag);
-//         fully_calib = bno.isFullyCalibrated();
-//             std::cout << std::fixed << std::setw(7) << std::setprecision(2) 
-//                       << "Accel:\n"
-//                       << "  x = " << accel_vec[0] << "\n"
-//                       << "  y = " << accel_vec[1] << "\n"
-//                       << "  z = " << accel_vec[2] << "\n"
-//                       << "Gyro:\n"
-//                       << "  x = " << gyro_vec[0] << "\n"
-//                       << "  y = " << gyro_vec[1] << "\n"
-//                       << "  z = " << gyro_vec[2] << "\n" 
-//                       << std::endl;
-//                     //   << "Calib (" << (fully_calib ? "is" : "isn't") << " fully calibrated):\n"
-//                     //   << "  acc = " << (int) accel << "\n"
-//                     //   << "  gyr = " << (int) gyro << "\n"
-//                     //   << "  mag = " << (int) mag << "\n" << std::endl;
-//         bno055::delay(50);
-//     }
+//     ImuBridge imu_bridge = {};
+//     return imu_bridge.run();
 // }
+
+    ConnectionBridge bno = {OperationMode::OPERATION_MODE_IMUPLUS};
+    bno.setExtCrystalUse(false);
+    float accel_vec[3] = {};
+    float gyro_vec[3] = {};
+    byte sys_stat = 0;
+    byte gyro = 0;
+    byte accel = 0;
+    byte mag = 0;
+    bool fully_calib = false;
+
+    while (true) {
+        bno.getVector(accel_vec, VectorMappings::VECTOR_LINEARACCEL);
+        bno.getVector(gyro_vec, VectorMappings::VECTOR_GYROSCOPE); 
+        // bno.getCalibration(sys_stat, gyro, accel, mag);
+        // fully_calib = bno.isFullyCalibrated();
+            std::cout << std::fixed << std::setw(7) << std::setprecision(2) 
+                      << "Accel:\n"
+                      << "  x = " << accel_vec[0] << "\n"
+                      << "  y = " << accel_vec[1] << "\n"
+                      << "  z = " << accel_vec[2] << "\n"
+                      << "Gyro:\n"
+                      << "  x = " << gyro_vec[0] << "\n"
+                      << "  y = " << gyro_vec[1] << "\n"
+                      << "  z = " << gyro_vec[2] << "\n" 
+                      << std::endl;
+                    //   << "Calib (" << (fully_calib ? "is" : "isn't") << " fully calibrated):\n"
+                    //   << "  acc = " << (int) accel << "\n"
+                    //   << "  gyr = " << (int) gyro << "\n"
+                    //   << "  mag = " << (int) mag << "\n" << std::endl;
+        delay(50);
+    }
+}
 
 
 #endif

@@ -1,5 +1,5 @@
 Header header
-uint8 linearCalib
-uint8 angularCalib
+uint8 accelerometerCalib
+uint8 gyroscopeCalib
 vector3D linear
-vector3D angular
+vector3D rotation

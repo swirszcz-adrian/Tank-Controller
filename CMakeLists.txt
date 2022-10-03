@@ -25,8 +25,6 @@ find_package(SFML REQUIRED COMPONENTS
   REQUIRED
 )
 
-find_library(WIRING_PI wiringPi /usr/include/wiringPi)
-
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
@@ -176,7 +174,7 @@ add_dependencies(display_bridge tank_controller_generate_messages_cpp)
 target_link_libraries(arduino_bridge ${catkin_LIBRARIES})
 target_link_libraries(gamepad_bridge ${catkin_LIBRARIES} sfml-graphics)
 target_link_libraries(imu_bridge ${catkin_LIBRARIES} ${PROJECT_NAME} i2c) 
-target_link_libraries(display_bridge ${catkin_LIBRARIES} ${WIRING_PI})
+target_link_libraries(display_bridge ${catkin_LIBRARIES} -lwiringPi -lwiringPiDev)
 
 #############
 ## Install ##

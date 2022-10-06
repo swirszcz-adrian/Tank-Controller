@@ -58,7 +58,7 @@ private:
      * @return node_name (the same string you passed as a parameter)
      */
     std::string rosInit(std::string node_name) {
-        // Initialize ROS without any remapping arguments (node is quite simple so we won't need them)
+        // Initialize ROS without any remapping arguments (node is quite simple so they won't be needed)
         ros::init(ros::M_string(), node_name);
         return node_name;
     }
@@ -102,7 +102,7 @@ public:
     }
 
 
-    // Remove copy constructor and assignement operator since we won't need them
+    // Remove copy constructor and assignement operator since they won't be needed
     GamepadBridge(const GamepadBridge &) = delete;
     GamepadBridge& operator=(const GamepadBridge &) = delete;
 

@@ -32,7 +32,7 @@ ConnectionBridge::ConnectionBridge(const OperationMode mode, const bool use_alt_
         std::cout << "DEBUG-INFO: Sucessfully connected with device at address 0x" << stream.str() << "\n";
     #endif
 
-    // Check whether we have actually connected with Adafruit BNO055 sensor (there could be other devices with same address)
+    // Check whether connection with Adafruit BNO055 sensor has been actually established (there could be other devices with same address)
     byte chip_id = 0x00;
     if (!i2cRead_(Registers::CHIP_ID_ADDR, chip_id) || chip_id != BOARD_ID) {   // This work because logic expressions are read from left to right
         #ifdef BNO055_PRINT_DEBUG

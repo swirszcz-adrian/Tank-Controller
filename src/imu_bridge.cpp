@@ -33,10 +33,24 @@ int main() {
 
 #include <iostream>
 #include <memory>
+#include <signal.h>
+#include <thread>
+
 
 using namespace bno055;
 
-#define DEG_2_RAD 0.01745329251f
+#define DEG_2_RAD 0.01745329251
+
+
+/**
+ * @brief Function called when ctrl+C is passed
+ * @param sig sigint
+ */
+void rosSigintHandler(int sig) {
+    ROS_INFO("Shutting down threads");
+    ros::shutdown();
+}
+
 
 /**
  * @brief Simple class for holding vecotr data
@@ -44,7 +58,7 @@ using namespace bno055;
  */
 struct Vector {
     // Construct new vector from three floats
-    Vector(float new_x = 0.0f, float new_y = 0.0f, float new_z = 0.0f) 
+    Vector(double new_x = 0.0, double new_y = 0.0, double new_z = 0.0) 
           : x(new_x)
           , y(new_y)
           , z(new_z) {}
@@ -65,7 +79,7 @@ struct Vector {
     }
 
     // Vector scaling
-    Vector operator*(const float k) {
+    Vector operator*(const double k) {
         x *= k;
         y *= k;
         z *= k;
@@ -93,14 +107,14 @@ struct Vector {
 
     // Set all values to zero
     void setZero() {
-        x = 0.0f;
-        y = 0.0f;
-        z = 0.0f;
+        x = 0.0;
+        y = 0.0;
+        z = 0.0;
     }
 
-    float x;
-    float y;
-    float z;
+    double x;
+    double y;
+    double z;
 };
 
 
@@ -115,7 +129,7 @@ private:
      * @return node_name (the same string you passed as a parameter)
      */
     std::string rosInit(std::string node_name) {
-        // Initialize ROS without any remapping arguments (node is quite simple so we won't need them)
+        // Initialize ROS without any remapping arguments (node is quite simple so they won't be needed)
         ros::init(ros::M_string(), node_name);
         return node_name;
     }
@@ -129,12 +143,12 @@ public:
     ImuBridge(int loop_rate = 30) 
              : node_name_(ImuBridge::rosInit("imu_bridge")) 
              , nh_(ros::NodeHandle())
-             , read_rate_(100)  // This value depends on sensor's update rate. For Adafruit BNO055 it is 100 Hz
+             , read_wait_(10)  // This value depends on sensor's update rate. For Adafruit BNO055 it is 100 Hz (this translates to aprrox. 10ms of wait time between consecutive reads)
              , publish_rate_(loop_rate)
              , accel_calib_(0U)
              , gyro_calib_(0U)
              , accel_()
-             , time_prev_(0.0f)
+             , time_prev_(0)
              , velocity_()
              , velocity_prev_()
              , velocity_filtered_()
@@ -160,7 +174,7 @@ public:
         ROS_INFO("Initialization finished");
     }
 
-    // Remove copy constructor and assignement operator since we won't need them
+    // Remove copy constructor and assignement operator since they won't be needed
     ImuBridge(const ImuBridge &) = delete;
     ImuBridge& operator=(const ImuBridge &) = delete;
 
@@ -168,7 +182,7 @@ public:
      * @brief Destroy the ImuBridge object and print message
      */
     ~ImuBridge() {
-        std::cout << "|===== Node has been successfully destroyed =====" << std::endl;
+        std::cout << "|===== Node has been successfully destroyed =====|" << std::endl;
     }
 
     /**
@@ -192,7 +206,7 @@ public:
      * @param event Struct holding some basic time-oriented data, passed by ros
      */
     void readSensorData() {     
-        // Read calibration data
+        // Read calibration data1C:A0:B8:01:CE:F2
         uint8_t sys_stat_calib = 0U;
         uint8_t mag_calib = 0U;
         bno_ptr_->getCalibration(sys_stat_calib, gyro_calib_, accel_calib_, mag_calib);
@@ -200,31 +214,31 @@ public:
         // Read rotation data and (if read succeeded) scale it accordingly
         float rotation_buffer[3] = {0.0f, 0.0f, 0.0f};
         if(bno_ptr_->getVector(rotation_buffer, VectorMappings::VECTOR_EULER)) {
-            // For rotation vector we need to assign correct values to correct variables and scale them from degrees to radians
-            rotation_.x = rotation_buffer[3] * DEG_2_RAD;
-            rotation_.y = rotation_buffer[2] * (-DEG_2_RAD);
-            rotation_.z = (rotation_buffer[1] - 180.0f) * (-DEG_2_RAD);
-        } // Otherwise we will use old data (so no action is necessary)
-        // Since Adafruit BNO055 sensor automatically filters data for Euler vector we don't need to use low pass filter
+            // For rotation vector assign correct values to correct variables and scale them from degrees to radians
+            rotation_.x = rotation_buffer[2] * DEG_2_RAD;
+            rotation_.y = rotation_buffer[1] * (-DEG_2_RAD);
+            rotation_.z = (rotation_buffer[0] - 180.0f) * (-DEG_2_RAD);
+        } // Otherwise  use old data (so no action is necessary)
+        // Since Adafruit BNO055 sensor automatically filters data for Euler vector there is no need to use low pass filter
 
         // Get current time
-        float time_curr = ros::Time::now().toSec();
+        ros::WallTime time_curr = ros::WallTime::now();
 
         // Read acceleration data and (if read succeeded) scale it
         float accel_buffer[3] = {0.0f, 0.0f, 0.0f};
         if (bno_ptr_->getVector(accel_buffer, VectorMappings::VECTOR_LINEARACCEL)) {
-            // For acceleration data we need to assign correct values to correct variables
-            // Since we read linear acceleration data, we don't need to subtract gravity values (sensor does that for us)
+            // For acceleration data assign correct values to correct variables
+            // No need to subtract gravity values (sensor already does that when reading linear acceleration)
             accel_.x = accel_buffer[0];
             accel_.y = -accel_buffer[1];
             accel_.z = -accel_buffer[2];
-        } // Otherwise we will use old data (so no action is necessary)
+        } // Otherwise use old data (so no action is necessary)
 
         // Calculate integral
-        velocity_ = accel_ * (time_curr - time_prev_) + velocity_prev_;    
+        velocity_ = accel_ * (time_curr - time_prev_).toSec() + velocity_prev_; // ############### use filetered velocity instead of previous?   
 
         // Low pass filter
-        velocity_filtered_ = velocity_filtered_ * 0.63946f + velocity_ * 0.18027f + velocity_prev_ * 0.18027f;
+        velocity_filtered_ = velocity_filtered_ * 0.63946 + velocity_ * 0.18027 + velocity_prev_ * 0.18027;
 
         // Update remaining values
         time_prev_ = time_curr;
@@ -263,26 +277,16 @@ public:
      * @return EXIT_SUCCESS if closed properly
      */
     int run() {
-        ROS_INFO("Main program loop has been started");
-
         // Reset internal variables (juuust in case)
         resetVariables_();
 
-        while (ros::ok()) {
-            // Read sensor data
-            // readSensorData();
+        // Start up threads
+        std::thread reader(&ImuBridge::startReadingData_, this);
+        std::thread publisher(&ImuBridge::startPublishingData_, this);
 
-            // If enough time has passed publish message
-            // if (publish_rate_.)
-            for (int i=0; i<3; i++) {
-                std::cout << publish_rate_.cycleTime().toSec() <<" ";
-                read_rate_.sleep();
-            }
-            std::cout << std::endl;
-            publish_rate_.sleep();
-
-            ros::spinOnce();
-        }
+        // Wait for user to close node
+        ROS_INFO("Main program loop has been started");
+        ros::spin();
 
         return EXIT_SUCCESS;
     }
@@ -306,7 +310,7 @@ private:
         gyro_calib_ = 0U;
 
         // Reset velocity but keep timer running!
-        time_prev_ = ros::Time::now().toSec();
+        time_prev_ = ros::WallTime::now();
         accel_.setZero();
         velocity_.setZero();
         velocity_prev_.setZero();
@@ -315,13 +319,31 @@ private:
         // No need to reset rotation data
     }
 
+    void startReadingData_() {
+        while(ros::ok()) {
+            this->readSensorData();
+            delay(read_wait_);
+        }
+
+        std::cout << "|===== Reader thread has been stopped =====|" << std::endl;
+    }
+
+    void startPublishingData_() {
+        while (ros::ok()) {
+            this->publishSensorData();
+            this->publish_rate_.sleep();
+        }
+
+         std::cout << "|===== Publisher thread has been stopped =====|" << std::endl;
+    }
+
     std::string node_name_;
     
     uint8_t accel_calib_;
     uint8_t gyro_calib_;
     
     Vector accel_;
-    float time_prev_;
+    ros::WallTime time_prev_;
     Vector velocity_;
     Vector velocity_prev_;
     Vector velocity_filtered_;
@@ -331,7 +353,7 @@ private:
     std::unique_ptr<ConnectionBridge> bno_ptr_;
 
     ros::NodeHandle nh_;
-    ros::Rate read_rate_;
+    int read_wait_;
     ros::Rate publish_rate_;
     ros::ServiceServer reset_vars_ser_;
     ros::Publisher imu_data_pub_;
@@ -339,9 +361,11 @@ private:
 
 
 int main() {
+    signal(SIGINT, rosSigintHandler);
     ImuBridge imu_bridge = {};
     return imu_bridge.run();
 }
+
 
 //     ConnectionBridge bno = {OperationMode::OPERATION_MODE_IMUPLUS};
 //     bno.setExtCrystalUse(true);

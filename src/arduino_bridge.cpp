@@ -89,7 +89,7 @@ private:
    * @return node_name (the same string you passed as a parameter)
    */
   static std::string rosInit(std::string node_name) {
-    // Initialize ROS without any remapping arguments (node is quite simple so we won't need them)
+    // Initialize ROS without any remapping arguments (node is quite simple so they won't be needed)
     ros::init(ros::M_string(), node_name);
     return node_name;
   }
@@ -156,7 +156,7 @@ public:
   }
 
 
-  // Remove copy constructor and assignement operator since we won't need them
+  // Remove copy constructor and assignement operator since they won't be needed
   ArduinoBridge(const ArduinoBridge &) = delete;
   ArduinoBridge& operator=(const ArduinoBridge &) = delete;
 
@@ -442,8 +442,7 @@ public:
               PIcontroller->action = false;
             }
 
-          // If we only wanted to get parameter's values change "action" variable to false
-          // (since we got requested parameters)
+          // If request was only to get parameter's values change "action" variable to false
           } else {
             PIcontroller->action = false;
           }
@@ -488,7 +487,7 @@ public:
     if (pi_left_.action) {
       // Override left PI controller's parameters
       if (pi_left_.update) {
-        // The process here is similiar to steering, but instead of adding "+" sign we will add additional 0 if number is smaller than 10
+        // The process here is similiar to steering but, instead of adding "+" sign, additional 0 will be added if number is smaller than 10
         std::stringstream kp_stream;
         std::stringstream ki_stream;
 

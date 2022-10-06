@@ -43,7 +43,7 @@ using namespace bno055;
 
 
 /**
- * @brief Function called when ctrl+C is passed
+ * @brief Function called when Ctrl+C is passed
  * @param sig sigint
  */
 void rosSigintHandler(int sig) {
@@ -137,7 +137,7 @@ private:
 
 public:
     /**
-     * @brief Construct a new ImuBridge objectm responsible for processing Adafruit BNO055 sensor data and parsing it to "/imu_data" topic
+     * @brief Construct a new ImuBridge object responsible for processing Adafruit BNO055 sensor data and parsing it to "/imu_data" topic
      * @param loop_rate rate at which data should be published
      */
     ImuBridge(int loop_rate = 30) 
@@ -319,6 +319,9 @@ private:
         // No need to reset rotation data
     }
 
+    /**
+     * @brief Function passed to std::thread. Takes care of reading sensor data
+     */
     void startReadingData_() {
         while(ros::ok()) {
             this->readSensorData();
@@ -328,6 +331,9 @@ private:
         std::cout << "|===== Reader thread has been stopped =====|" << std::endl;
     }
 
+    /**
+     * @brief Function passed to std::thread. Takes care of publishing sensor data
+     */
     void startPublishingData_() {
         while (ros::ok()) {
             this->publishSensorData();

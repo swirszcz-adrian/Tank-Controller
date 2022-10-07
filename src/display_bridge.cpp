@@ -25,6 +25,9 @@ int main() {
  * The code below will only be executed, if the device has ARM archtecture and isn't running on Windows
  */
 
+#include "ros/ros.h"
+#include "tank_controller/motorsData.h"
+#include "tank_controller/motorsManualControl.h"
 
 #include <wiringPi.h>
 #include <lcd.h>
@@ -115,6 +118,16 @@ enum LcdRows {
     BOTTOM_ROW = 1
 };
 
+
+/**
+ * @brief Simple enum for choosing between printing in left or right half of a row
+ */
+enum LcdHalves {
+    LEFT_HALF = 0,
+    RIGHT_HALF = 8,
+};
+
+
 // List of all nodes
 const std::array<std::string, 3> node_list = {
     "/arduino_bridge",
@@ -149,6 +162,9 @@ public:
     DisplayControl(const DisplayControl &) = delete;
     DisplayControl& operator=(const DisplayControl &) = delete;
 
+    //Default move constructor
+    DisplayControl(DisplayControl &&) = default;
+
     /**
      * @brief Destroy the DisplayControl object and clear display
      */
@@ -165,7 +181,10 @@ public:
      */
     bool printRow(LcdRows row, std::string msg) {
         if (msg.length() <= 16) {
+            // Select row
             lcdPosition(lcd_, 0, row);
+
+            // Print message (append is used to clear remaining space in row)
             lcdPuts(lcd_, msg.append(16 - msg.length(), ' ').c_str());
             
             return true;
@@ -175,18 +194,17 @@ public:
     }
 
     /**
- /**
-     * @brief Prints given message in given row and column
+     * @brief Prints given message in given half of a given row
      * @param row whether to print message in top or bottom row
-     * @param col column from which message will be written (range 0..15)
+     * @param half whether to print message in left or right half of a row
      * @param msg text of message
      * @return true if print succeeded
      * @return false if print failed
      */
-    bool printPosition(LcdRows row, int col, std::string msg) {
-        if (0 <= col <= 15 && msg.length() <= 16 - col) {
-            lcdPosition(lcd_, col, row);
-            lcdPuts(lcd_, msg.c_str());
+    bool printQuarter(LcdRows row, LcdHalves half, std::string msg) {
+        if (msg.length() <= 8) {
+            lcdPosition(lcd_, half, row);
+            lcdPuts(lcd_, msg.append(8 - msg.length(), ' ').c_str());
 
             return true;
         }
@@ -204,6 +222,137 @@ public:
 
 private:
     int lcd_;
+};
+
+
+/**
+ * @brief Class responsible for getting data from ros topics ans parsing it into lcd display
+ */
+class DisplayBridge {
+private:
+    /**
+     * @brief Function called only inside constructor initializer list to avoid problems with ROS
+     * @param node_name a string containings node's name
+     * @return node_name (the same string you passed as a parameter)
+     */
+    std::string rosInit(std::string node_name) {
+        // Initialize ROS without any remapping arguments (node is quite simple so they won't be needed)
+        ros::init(ros::M_string(), node_name);
+        return node_name;
+    }
+
+public:
+    /**
+     * @brief Construct a new DisplayBridge object, responsible for getting data from ros topic and parsing it into lcd display
+     * @param display reference to DisplayControl object, used to directly control lcd
+     * @param loop_rate rate at which new data will be aquired (no need to make it high, since lcd screen takes a while to update)
+     */
+    DisplayBridge(DisplayControl &display, int loop_rate = 2)
+                 : node_name_(DisplayBridge::rosInit("display_bridge")) 
+                 , display_(std::move(display))
+                 , nh_(ros::NodeHandle())
+                 , loop_rate_(loop_rate) {
+        ROS_INFO("Starting up %s node:", node_name_.c_str());
+
+        // Create subscriber, that receives data from /motors_manual_control topic with queue size equal to 1 and calls back
+        // function motorsManualControlCallback, which is a method of DisplayBridge class and belongs to "this" object 
+        man_ctrl_sub_ = nh_.subscribe("/motors_manual_control", 1, &DisplayBridge::motorsManualControlCallback, this);
+        ROS_INFO(" - /motors_manual_control subscriber created");
+
+        // Create subscriber, that receives data from /motors_data topic with queue size equal to 1 and calls back
+        // function motorsDataCallback, which is a method of DisplayBridge class and belongs to "this" object 
+        mot_data_sub_ = nh_.subscribe("/motors_data", 1, &DisplayBridge::motorsDataCallback, this);
+        ROS_INFO(" - /motors_data subscriber created");
+
+        ROS_INFO("Initialization finished");
+    }
+
+    // Remove copy constructor and assignement operator since they won't be needed
+    DisplayBridge(const DisplayBridge &) = delete;
+    DisplayBridge& operator=(const DisplayBridge &) = delete;
+
+    /**
+     * @brief Destroy the DisplayBridge object, print message
+     */
+    ~DisplayBridge() {
+        std::cout << "|===== Node has been successfully destroyed =====" << std::endl;
+    }
+
+    /**
+     * @brief Function called automatically by ros
+     * There is no need for user to call this function manually!
+     * @param msg Passed automatically by ros subscriber
+     */
+    void motorsManualControlCallback(const tank_controller::motorsManualControl::ConstPtr &msg) {
+        if (msg->isConnected) {
+            if (msg->takeControl) {
+                // Gamepad connected and taking control
+                display_.printQuarter(TOP_ROW, RIGHT_HALF, "BT: CTRL");
+
+            } else {
+                // Gamepad connected  but not taking control
+                display_.printQuarter(TOP_ROW, RIGHT_HALF, "BT: STBY");
+            }
+        } else {
+            // Gamepad not connected
+            display_.printQuarter(TOP_ROW, RIGHT_HALF, "BT: OFF");
+        }
+    }
+
+    /**
+     * @brief Function called automatically by ros
+     * There is no need for user to call this function manually!
+     * @param msg Passed automatically by ros subscriber
+     */
+    void motorsDataCallback(const tank_controller::motorsData::ConstPtr &msg) {
+        if (msg->isStopped) {
+            display_.printQuarter(TOP_ROW, LEFT_HALF, "STOPPED");
+        } else {
+            display_.printQuarter(TOP_ROW, LEFT_HALF, "MOVING");
+        }
+    }
+
+
+    /**
+     * @brief Main program loop. Call it to run nodes and entire program logic.
+     * @return EXIT_SUCCESS if closed properly
+     */
+    int run() {
+        // Before continuing clear screen and print default messages
+        display_.clearScreen();
+        display_.printQuarter(TOP_ROW, LEFT_HALF, "STOPPED");
+        display_.printQuarter(TOP_ROW, RIGHT_HALF, "BT: OFF");
+
+
+        ROS_INFO("Main program loop has been started");
+
+        // Use loop to keep low update rate
+        while(ros::ok()) {
+            ros::spinOnce();
+            loop_rate_.sleep();
+        }
+        
+        // Loop finished == Destroy node
+        ROS_INFO("Main program loop ended, destroying node");
+        return EXIT_SUCCESS;
+    }
+
+    /**
+     * @brief Another way to call run() method (aka. main program loop).
+     * @return EXIT_SUCCESS if closed properly
+     */
+    int operator()() {
+        return this->run();
+    }
+
+private:
+    std::string node_name_;
+    DisplayControl display_;
+
+    ros::NodeHandle nh_;
+    ros::Rate loop_rate_;
+    ros::Subscriber man_ctrl_sub_;
+    ros::Subscriber mot_data_sub_;
 };
 
 
@@ -238,11 +387,14 @@ int main() {
             if (num_online == node_list.size()) { break; }
         }
 
-        // Check for updates once a second
-        sleep(1);
+        // Wait a bit before repeating procedure
+        usleep(500000);
     }
 
-    display.clearScreen();
+    // All other nodes are online -> time to start up ros subscriptions
+    std::cout << "All other nodes online, starting up data collection" << std::endl;
+    DisplayBridge display_bridge = {display};
+    display_bridge.run();
 }
 
 

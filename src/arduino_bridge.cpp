@@ -247,8 +247,8 @@ public:
 
 
   /**
-   * @brief 
-   * 
+   * @brief Function called automatically whenever new motorsParameters request is received by service server.
+   * There is no need for user to call this function manually!
    * @param req reference to request message, passed automatically by ROS
    * @param res reference to response message, passed automatically by ROS
    * @return true (always)

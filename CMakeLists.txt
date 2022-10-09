@@ -77,6 +77,8 @@ add_service_files(
   globalStop.srv
   motorsParameters.srv
   imuResetVariables.srv
+  addRelativeTarget.srv
+  clearTargets.srv
 )
 
 ## Generate actions in the 'action' folder
@@ -156,6 +158,7 @@ add_executable(arduino_bridge src/arduino_bridge.cpp)
 add_executable(gamepad_bridge src/gamepad_bridge.cpp)
 add_executable(imu_bridge src/imu_bridge.cpp)
 add_executable(display_bridge src/display_bridge.cpp)
+add_executable(slip_compensator src/slip_compensator.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -169,12 +172,15 @@ add_dependencies(arduino_bridge tank_controller_generate_messages_cpp)
 add_dependencies(gamepad_bridge tank_controller_generate_messages_cpp)
 add_dependencies(imu_bridge tank_controller_generate_messages_cpp)
 add_dependencies(display_bridge tank_controller_generate_messages_cpp)
+add_dependencies(slip_compensator tank_controller_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(arduino_bridge ${catkin_LIBRARIES})
 target_link_libraries(gamepad_bridge ${catkin_LIBRARIES} sfml-graphics)
 target_link_libraries(imu_bridge ${catkin_LIBRARIES} ${PROJECT_NAME} i2c) 
 target_link_libraries(display_bridge ${catkin_LIBRARIES} -lwiringPi -lwiringPiDev)
+target_link_libraries(slip_compensator ${catkin_LIBRARIES})
+
 
 #############
 ## Install ##

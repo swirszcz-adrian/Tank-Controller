@@ -129,10 +129,11 @@ enum LcdHalves {
 
 
 // List of all nodes
-const std::array<std::string, 3> node_list = {
+const std::array<std::string, 4> node_list = {
     "/arduino_bridge",
     "/gamepad_bridge",
-    "/imu_bridge"
+    "/imu_bridge",
+    "/slip_compensator"
 };
 
 

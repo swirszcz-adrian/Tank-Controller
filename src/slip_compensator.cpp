@@ -142,7 +142,7 @@ public:
                    , default_error_(default_error)
                    , min_angle_error_(min_angle_error)
                    , stop_(true)
-                   , last_imu_callback_(ros::Time::now())
+                   , last_imu_callback_(0.0f)
                    , time_diff_(0.0f)
                    , target_vector_()
                    , traveled_distance_(0.0f)
@@ -352,6 +352,7 @@ public:
      * @return EXIT_SUCCESS if closed properly
      */
     int run() {
+        targetReached();
         ROS_INFO("Main program loop has been started");
 
         while(ros::ok()) {

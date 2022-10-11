@@ -1,0 +1,7 @@
+<launch>
+    <node pkg="tank_controller" type="display_bridge" name="display_bridge"/>
+    <node pkg="tank_controller" type="arduino_bridge" name="arduino_bridge"/>
+    <node pkg="tank_controller" type="gamepad_bridge" name="gamepad_bridge"/>
+    <node pkg="tank_controller" type="imu_bridge" name="imu_bridge"/>
+    <node pkg="tank_controller" type="slip_compensator" name="slip_compensator"/>
+</launch>

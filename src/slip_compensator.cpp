@@ -2,27 +2,52 @@
 #include "tank_controller/imuData.h"
 #include "tank_controller/motorsData.h"
 #include "tank_controller/motorsAutoControl.h"
+#include "tank_controller/remainingDistance.h"
 #include "tank_controller/addRelativeTarget.h"
 #include "tank_controller/clearTargets.h"
 
 #include <iostream>
 #include <sstream>
 #include <math.h>
-#include <vector>
+#include <queue>
 
+// 0.9 * pi
+#define SEPARATE_ANGLE 2.8274333882f
 
 /**
  * @brief Simple struct to allow target's data to be stored in std::vector
  */
-struct target {
+struct relativeTarget {
     /**
-     * @brief Construct a new target struct with from data
+     * @brief Construct a new relativeTarget struct with from data
      */
-    target(float x, float z, float x_err, float z_err)
+    relativeTarget(float x, float z, float x_err, float z_err)
           : x(x)
           , z(z)
           , x_err(x_err)
           , z_err(z_err) {}
+
+    /**
+     * @brief Construct a new relativeTarget struct from other struct
+     * @param other 
+     */
+    relativeTarget(const relativeTarget &other)
+                  : x(other.x)
+                  , z(other.z)
+                  , x_err(other.x_err)
+                  , z_err(other.z_err) {}
+
+    /**
+     * @brief Construct a new relativeTarget struct from other struct
+     * @param other 
+     */
+    relativeTarget& operator=(const relativeTarget &other) {
+        x = other.x;
+        z = other.z;
+        x_err = other.x_err;
+        z_err = other.z_err;
+        return *this;
+    }
 
     /**
      * @brief Return stringstream representation of struct
@@ -65,7 +90,8 @@ public:
                 , ki(ki)
                 , kd(kd)
                 , err_integ(0.0f)
-                , err_prev(0.0f) {}
+                , err_prev(0.0f)
+                , u(0.0f) {}
 
     /**
      * @brief Set integral, previous error and sterring to 0
@@ -73,30 +99,7 @@ public:
     void reset() {
         err_integ = 0.0f;
         err_prev = 0.0f;
-    }
-
-    /**
-     * @brief Calculate steering based on internal variables and provided target, process value and time difference
-     * @param sp current target
-     * @param pv current process value
-     * @param time_diff time difference between this and past loop
-     * @return float steering
-     */
-    float calculateSteering(float sp, float pv, float time_diff) {
-        // Calculate current error
-        float err = sp - pv;
-
-        // Calculate integral
-        err_integ = err_integ + (err * time_diff);
-
-        // Calculate derrivative
-        float err_der = (err - err_prev) / time_diff;
-
-        // Update previous error value
-        err_prev = err;
-
-        // Calculate steering
-        return kp * err + ki * err_integ + kd * err_der;
+        u = 0.0f;
     }
 
 public:
@@ -106,9 +109,8 @@ public:
 
     float err_integ;
     float err_prev;
+    float u;
 };
-
-    
 
 
 /**
@@ -129,24 +131,26 @@ private:
 
 public:
     /**
-     * @brief Construct a new SlipCompensator object
-     * 
-     * @param default_error 
-     * @param min_angle_error 
-     * @param loop_rate 
+     * @brief Construct a new SlipCompensator object, that is object of a lass responsible for compensating robot's slips and making sure it reaches its targets
+     * @param default_distance_error default value of distance error (used if service client didn't specify one)
+     * @param default_angle_error_ default value of angle error (used if service client didn't specify one)
+     * @param acceptable_angle_error angle error at which robot will start to move (robot won't drive forwards as long as angle error is greater than this value)
+     * @param loop_rate rate at which program should run
      */
-    SlipCompensator(float default_error = 0.05f, float min_angle_error = 0.087266f, int loop_rate = 30) 
+    SlipCompensator(float default_distance_error = 0.05f, float default_angle_error_ = 0.017453f, float acceptable_angle_error = 0.087266f, int loop_rate = 30) 
                    : node_name_(SlipCompensator::rosInit("slip_compensator")) 
                    , nh_(ros::NodeHandle())
                    , loop_rate_(ros::Rate(loop_rate))
-                   , default_error_(default_error)
-                   , min_angle_error_(min_angle_error)
+                   , default_distance_error_(default_distance_error)
+                   , default_angle_error_(default_angle_error_)
+                   , acceptable_angle_error_(acceptable_angle_error)
                    , stop_(true)
                    , last_imu_callback_(0.0f)
                    , time_diff_(0.0f)
-                   , target_vector_()
+                   , target_queue_()
                    , traveled_distance_(0.0f)
                    , current_angle_(0.0f)
+                   , angle_offset_(0.0f)
                    , angular_pid_(1, 0, 0)
                    , linear_pid_(1, 0, 0) {
         ROS_INFO("Starting up %s node:", node_name_.c_str());
@@ -175,6 +179,10 @@ public:
         auto_ctrl_pub_ = nh_.advertise<tank_controller::motorsAutoControl>("/motors_auto_control", 1);
         ROS_INFO(" - /motors_auto_control publisher created");
 
+        // Create publisher that sends messages of type tank_controller::remainingDistance to /remaining_distance topic with message queue size equal to 1
+        remain_dist_pub_= nh_.advertise<tank_controller::remainingDistance>("/remaining_distance", 1);
+        ROS_INFO(" - /remaining_distance publisher created");
+
         ROS_INFO("Initialization finished");
     }
 
@@ -190,6 +198,29 @@ public:
     }
 
     /**
+     * @brief Function called whenever a target has been reached or cleared
+     * @param reset_pid reset pid controllers' internal variables
+     */
+    void targetReached(bool reset_pid = false) {
+        // Remove current target
+        if (!target_queue_.empty()) {
+            target_queue_.pop();
+        }
+
+        // Set angle offset to current angle
+        angle_offset_ = current_angle_;
+
+        // Set traveled distance to 0
+        traveled_distance_ = 0.0f;
+
+        // If asked to, reset pid internat variables
+        if (reset_pid) {
+            linear_pid_.reset();
+            angular_pid_.reset();
+        }
+    }
+
+    /**
      * @brief Function called automatically whenever new addRelativeTarget request is received by service server.
      * There is no need for user to call this function manually!
      * @param req reference to request message, passed automatically by ROS
@@ -197,26 +228,65 @@ public:
      * @return true (always)
      */
     bool addRelativeTargetServer(tank_controller::addRelativeTarget::Request &req, tank_controller::addRelativeTarget::Response &res) {
-        // fill in response header stamp
+        // Fill in response header
         res.header.stamp = ros::Time::now();
         
-        // Try to add add point at the end of target vector
-        try {
-            target_vector_.push_back(target(req.distance, fmod(req.angle, M_PI), req.error, atan2(req.error, req.distance)));
-        
-        // If failed return appropriate message
-        } catch (...) {
-            res.feedback = "Failed to add point, target queue is full";
-            ROS_WARN("Failed to add point, target queue is full");
+        // First make sure angle is within (-pi, pi) range
+        float angle = fmod(req.angle, 2.0f * M_PIf32);
+        angle = fabs(angle) > M_PIf32 ? std::copysignf(M_PIf32, angle) - angle : angle;
+
+        // To avoid problems with angles close to pi add two points (one for partial rotation, other to finish rotation and start moving)
+        if (fabs(angle) > SEPARATE_ANGLE) {
+            // Get error values (angle error should be divided by 2 since two points will be added)
+            float angle_error = req.angle_error > 0.0f ? req.angle_error * 0.5f : default_angle_error_ * 0.5f;
+            float distance_error = req.distance_error > 0.0f ? req.distance_error : default_distance_error_;
+
+            // Get angle values for both points
+            float first_angle = std::copysignf(SEPARATE_ANGLE, angle);
+            float second_angle = angle - first_angle;
+
+            // Try to add points to queue
+            try {
+                target_queue_.push(relativeTarget(0.0f, first_angle, distance_error, angle_error));
+                target_queue_.push(relativeTarget(req.distance, second_angle, distance_error, angle_error));
+
+            // If failed return appropriate message
+            } catch(...) {
+                res.feedback = "Failed to add point, target queue is full";
+                ROS_WARN("Failed to add point, target queue is full");
+
+                return true;
+            }
+
+            // Otherwise inform that two pints have been added
+            res.feedback = "Added two points to prevent PID controller from continous spin";
+            ROS_INFO("Added two points to prevent PID controller from continous spin");
 
             return true;
-        } 
-        
-        // Else fill in response data
-        res.feedback = "Added point " + target_vector_.back().toString(); 
-        ROS_INFO(res.feedback.c_str()); 
 
-        return true;
+        // If angle is not too big add only one point
+        } else {
+            float angle_error = req.angle_error > 0.0f ? req.angle_error : default_angle_error_;
+            float distance_error = req.distance_error > 0.0f ? req.distance_error : default_distance_error_;
+
+            // Try to add point
+            try {
+                target_queue_.push(relativeTarget(req.distance, angle, distance_error, angle_error));
+            
+            // If failed return appropriate message
+            } catch(...) {
+                res.feedback = "Failed to add point, target queue is full";
+                ROS_WARN("Failed to add point, target queue is full");
+
+                return true;
+            }
+
+            // Otherwise inform that point has been added
+            res.feedback = "Point has been successfully added";
+            ROS_INFO("Point has been successfully added");
+
+            return true;
+        }
     }
 
     /**
@@ -230,37 +300,55 @@ public:
         // Fill in response header stamp
         res.header.stamp = ros::Time::now();
 
-        // If not requested to do any clearing, simply return current target vector size
+        // If not requested to do any clearing, simply return current target queue size
         if(!req.clearCurrent && !req.clearQueued) {
-            res.feedback = "There are currently " + std::to_string(target_vector_.size()) + " targets in queue (including current target)";
+            res.feedback = "There are currently " + std::to_string(target_queue_.size()) + " targets in queue (including current target)";
             ROS_INFO(res.feedback.c_str());
 
-        // If requested to only clear current target remove first element from target vector
+        // If requested to only clear current target remove first element from target queue
         } else if(req.clearCurrent && !req.clearQueued) {
-            if(!target_vector_.empty()) {
+            if(!target_queue_.empty()) {
+                // The easiest way to clear current target is to asume it has been already reached
                 targetReached(true);
+
+                // Send feedback
                 res.feedback = "Current target has been removed";
                 ROS_WARN("Current target has been removed");
             } else {
-                res.feedback = "Target vector is empty - there was no target to remove";
+                res.feedback = "Target queue is empty - there was no target to remove";
             }
 
         // If requested to clear queued targets remove all but first element of target vector
         } else if(!req.clearCurrent && req.clearQueued) {
-            if(!target_vector_.empty()) {
-                int elems = target_vector_.size();
-                target_vector_.erase(target_vector_.begin() + 1);
+            if(!target_queue_.empty()) {
+                // Get size of current queue
+                int elems = target_queue_.size();
+
+                // Create new queue with containing only first element from the old queue
+                std::queue<relativeTarget> new_target_queue;
+                new_target_queue.push(target_queue_.front());
+
+                // Swap new and old queue
+                std::swap(target_queue_, new_target_queue);
+
+                // Send feedback
                 res.feedback = "Removed " + std::to_string(elems - 1) + " queued elements";
                 ROS_WARN(res.feedback.c_str());
             } else {
-                res.feedback = "Queue empty - there was nothing to remove";
+                res.feedback = "Target queue empty - there was nothing to remove";
             }
 
         // If requested to clearboth current and queued targets clear vector
         } else if(req.clearCurrent && req.clearQueued) {
-            if(!target_vector_.empty()) {
-                int elems = target_vector_.size();
-                target_vector_.clear();
+            if(!target_queue_.empty()) {
+                // Get size of current queue
+                int elems = target_queue_.size();
+
+                // Create new empty queue and swap it with the old one
+                std::queue<relativeTarget> new_target_queue;
+                std::swap(target_queue_, new_target_queue);
+
+                // Send feedback
                 res.feedback = "Removed " + std::to_string(elems) + " elements from target vector";
                 ROS_WARN(res.feedback.c_str());
             } else {
@@ -277,11 +365,12 @@ public:
      * @param msg Passed automatically by ROS subscriber
      */
     void imuDataCallback(const tank_controller::imuData::ConstPtr &msg) {
-        // In current version there is no filtering, only changing velocity to distance
+        // Update time-based variables
         time_diff_ = (msg->header.stamp - last_imu_callback_).toSec();
         last_imu_callback_ = msg->header.stamp;
-        traveled_distance_ = traveled_distance_ + (msg->linear.x * time_diff_);
 
+        // Update traveled distance and current angle (as of this verison do it without any filtering)
+        traveled_distance_ = traveled_distance_ + (msg->linear.x * time_diff_);
         current_angle_ = msg->rotation.z;
     }
 
@@ -291,60 +380,54 @@ public:
      * @param msg Passed automatically by ROS subscriber
      */
     void motorsDataCallback(const tank_controller::motorsData::ConstPtr &msg) {
-        // In current version only get global stop value
-        stop_ = msg->isStopped;
-    }
-
-    /**
-     * @brief Function called whenever current target has been reached to remove it from target vector
-     * @param reset_pid whether to reset pid controllers or have them act continuously
-     */
-    void targetReached(bool reset_pid = false) {
-        target_vector_.erase(target_vector_.begin());
-        traveled_distance_ = 0.0f;
-        last_imu_callback_ = ros::Time::now();
-        time_diff_ = 0.0f;
-
-        if(reset_pid) {
-            angular_pid_.reset();
-            linear_pid_.reset();
+        // Enable/disable stop and (if needed) update current angle offset
+        if (!stop_ && msg->isStopped) {
+            stop_ = true;
+        } else if (stop_ && !msg->isStopped) {
+            if (target_queue_.empty()) {
+                angle_offset_ = current_angle_;
+            } else {
+                angle_offset_ = current_angle_ + (target_queue_.front().z - angular_pid_.err_prev);
+            }
+            stop_ = false;
         }
+
+        // As of this version rest of motors data is not used
     }
 
     /**
-     * @brief Function called inside loop to calculate current steering value and publish it to /motors_auto_control topic
+     * @brief Function caled insiede loop to publish current automatic steering
      */
-    void calculateAndPublishSteering() {
-        // Create message and fill in header data
+    void motorsAutoControlPublish() {
+        // Create message and fill in header
         tank_controller::motorsAutoControl msg;
         msg.header.stamp = ros::Time::now();
 
-        // If target vector is empty or stop is true robot needs to wait in place
-        if (target_vector_.empty() || stop_) {
-            // Set steering values to 0
-            msg.linear.x = 0.0f;
-            msg.angular.z = 0.0f;
-
-        // Otherwise do actual calculations
-        } else {
-            // Calculate angular steering
-            msg.angular.z = angular_pid_.calculateSteering(target_vector_[0].z, current_angle_, time_diff_);
-
-            // If robot is near correct orientation start moving
-            if(fabs(target_vector_[0].z - current_angle_) < min_angle_error_) {
-                msg.linear.x = linear_pid_.calculateSteering(target_vector_[0].x, traveled_distance_, time_diff_);
-            } else {
-                msg.linear.x = 0.0f;
-            }
-
-            // If robot is close enough to target mark target as reached
-            if(fabs(target_vector_[0].x - traveled_distance_) < target_vector_[0].x_err) {
-                targetReached(false); // Do not reset pid controllers
-            }
-        }
-
-        // Publish message
+        // Fill in current steering and publish message
+        msg.linear.x = linear_pid_.u;
+        msg.angular.z = angular_pid_.u;
         auto_ctrl_pub_.publish(msg);
+    }
+
+    /**
+     * @brief Function called inside loop to publish distance and angle remaining to current targetd
+     */
+    void remainingDistancePublish() {
+        // Create message and fill in header
+        tank_controller::remainingDistance msg;
+        msg.header.stamp = ros::Time::now();
+
+        // Fill in data and publish message
+        msg.distance = linear_pid_.err_prev;
+        msg.angle = angular_pid_.err_prev;
+        remain_dist_pub_.publish(msg);
+    }
+
+    /**
+     * @brief Function called inside loop to calculate current steering values
+     */
+    void calculateSteering() {
+
     }
 
     /**
@@ -352,17 +435,20 @@ public:
      * @return EXIT_SUCCESS if closed properly
      */
     int run() {
-        targetReached();
         ROS_INFO("Main program loop has been started");
 
-        while(ros::ok()) {
-            // Get new messages
+        while (ros::ok()) {
+            // Calculate current steering
+            calculateSteering();
+
+            // Publish steering and remaining distance
+            motorsAutoControlPublish();
+            remainingDistancePublish();
+
+            // Wait for subscribers
             ros::spinOnce();
 
-            // Do calculations and publish message
-            calculateAndPublishSteering();
-
-            // Sleep remaining loop time
+            // Sleep for the remaining loop time
             loop_rate_.sleep();
         }
 
@@ -375,14 +461,15 @@ public:
      */
     int operator()() {
         return this->run(); // "this" pointer is unnecessary but it looks nice so it stays
-    }  
+    }
 
 private:
     std::string node_name_;
     
-    std::vector<target> target_vector_;
-    float default_error_;
-    float min_angle_error_;
+    std::queue<relativeTarget> target_queue_;
+    float default_distance_error_;
+    float default_angle_error_;
+    float acceptable_angle_error_;
 
     bool stop_;
     ros::Time last_imu_callback_;
@@ -390,6 +477,7 @@ private:
 
     float traveled_distance_;
     float current_angle_;
+    float angle_offset_;
 
     PIDvariables angular_pid_;
     PIDvariables linear_pid_;
@@ -401,6 +489,7 @@ private:
     ros::Subscriber imu_data_sub_;
     ros::Subscriber motors_data_sub_;
     ros::Publisher auto_ctrl_pub_;
+    ros::Publisher remain_dist_pub_;
 };
 
 int main() {

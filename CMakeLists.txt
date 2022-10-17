@@ -69,6 +69,7 @@ add_message_files(
   motorsManualControl.msg
   motorsAutoControl.msg
   imuData.msg
+  remainingDistance.msg
 )
 
 ## Generate services in the 'srv' folder

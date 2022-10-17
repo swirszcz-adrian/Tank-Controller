@@ -1,7 +1,8 @@
 Header header
 float32 distance
 float32 angle
-float32 error
+float32 distance_error
+float32 angle_error
 ---
 Header header
 string feedback

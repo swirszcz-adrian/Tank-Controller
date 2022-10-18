@@ -28,11 +28,13 @@ int main() {
 #include "ros/ros.h"
 #include "tank_controller/motorsData.h"
 #include "tank_controller/motorsManualControl.h"
+#include "tank_controller/remainingDistance.h"
 
 #include <wiringPi.h>
 #include <lcd.h>
 #include <string>
 #include <iostream>
+#include <iomanip>
 #include <unistd.h>
 #include <sstream>
 #include <vector>
@@ -48,6 +50,11 @@ int main() {
 #define LCD_D5  22               //Data pin 5
 #define LCD_D6  21               //Data pin 6
 #define LCD_D7  14               //Data pin 7
+
+
+// Const value to speed up calculations
+#define RAD_2_DEG 57.2957795f
+
 
 /**
  * @brief Function used to write messages to terminal and retrieve back output
@@ -265,6 +272,11 @@ public:
         mot_data_sub_ = nh_.subscribe("/motors_data", 1, &DisplayBridge::motorsDataCallback, this);
         ROS_INFO(" - /motors_data subscriber created");
 
+        // Create subscriber, that receives data from /remaining_distance topic with queue size equal to 1 and calls back
+        // function remainingDistanceCallback, which is a method of DisplayBridge class and belongs to "this" object
+        remain_dist_sub_ = nh_.subscribe("/remaining_distance", 1, &DisplayBridge::remainingDistanceCallback, this);
+        ROS_INFO(" - /remaining_distance subscriber created");
+
         ROS_INFO("Initialization finished");
     }
 
@@ -313,6 +325,27 @@ public:
         }
     }
 
+    /**
+     * @brief Function called automatically by ros
+     * There is no need for user to call this function manually!
+     * @param msg Passed automatically by ros subscriber
+     */
+    void remainingDistanceCallback(const tank_controller::remainingDistance::ConstPtr &msg) {
+        // If either number is nan it means all targets have been reached
+        if (std::isnan(msg->distance) || std::isnan(msg->angle)) {
+            display_.printRow(BOTTOM_ROW, "no target");
+
+        // Otherwise print actual target
+        } else {
+            // Parse data into streamstring
+            std::stringstream stream;
+            stream << std::fixed << std::setw(6) << std::setprecision(2) << msg->distance << " m" 
+            << " " << std::fixed << std::setw(5) << std::setprecision(2) << (int) (msg->angle * RAD_2_DEG) << " \337";
+
+            // Print data
+            display_.printRow(BOTTOM_ROW, stream.str());
+        }
+    }
 
     /**
      * @brief Main program loop. Call it to run nodes and entire program logic.
@@ -323,6 +356,7 @@ public:
         display_.clearScreen();
         display_.printQuarter(TOP_ROW, LEFT_HALF, "STOPPED");
         display_.printQuarter(TOP_ROW, RIGHT_HALF, "BT: OFF");
+        display_.printRow(BOTTOM_ROW, "no target");
 
 
         ROS_INFO("Main program loop has been started");
@@ -354,6 +388,7 @@ private:
     ros::Rate loop_rate_;
     ros::Subscriber man_ctrl_sub_;
     ros::Subscriber mot_data_sub_;
+    ros::Subscriber remain_dist_sub_;
 };
 
 

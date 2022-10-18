@@ -102,6 +102,29 @@ public:
         u = 0.0f;
     }
 
+    /**
+     * @brief Calculate steering based on internal variables and provided target, process value and time difference
+     * @param sp current target (aka setpoint)
+     * @param pv current process value
+     * @param time_diff time difference between this and past loop
+     */
+    void calculateSteering(float sp, float pv, float time_diff) {
+        // Calculate current error
+        float err = sp - pv;
+
+        // Calculate integral
+        err_integ = err_integ + (err * time_diff);
+
+        // Calculate derrivative
+        float err_der = (err - err_prev) / time_diff;
+
+        // Update previous error value
+        err_prev = err;
+
+        // Calculate steering
+        u = kp * err + ki * err_integ + kd * err_der;
+    }
+
 public:
     float kp;
     float ki;
@@ -418,8 +441,14 @@ public:
         msg.header.stamp = ros::Time::now();
 
         // Fill in data and publish message
-        msg.distance = linear_pid_.err_prev;
-        msg.angle = angular_pid_.err_prev;
+        if (!target_queue_.empty()) {
+            msg.distance = linear_pid_.err_prev;
+            msg.angle = angular_pid_.err_prev;
+        } else {
+            msg.distance = std::nanf("");
+            msg.angle = std::nanf("");
+        }
+        
         remain_dist_pub_.publish(msg);
     }
 
@@ -427,7 +456,25 @@ public:
      * @brief Function called inside loop to calculate current steering values
      */
     void calculateSteering() {
+        if (!stop_ && !target_queue_.empty()) {
+            // Calculate angular steering
+            angular_pid_.calculateSteering(target_queue_.front().z, current_angle_ - angle_offset_, time_diff_);
 
+            // If angular error is within acceptable range calculate linear stering 
+            if (fabs(angular_pid_.err_prev) <= acceptable_angle_error_) {
+                linear_pid_.calculateSteering(target_queue_.front().x, traveled_distance_, time_diff_);
+            } else {
+                linear_pid_.u = 0.0f;
+            }
+
+            // If both errors are within acceptable range mark target as reached
+            if (fabs(angular_pid_.err_prev) <= target_queue_.front().z_err && fabs(linear_pid_.err_prev) <= target_queue_.front().x_err) {
+                targetReached();
+            }
+        } else {
+            angular_pid_.u = 0.0f;
+            linear_pid_.u = 0.0f;
+        }
     }
 
     /**

@@ -11,7 +11,7 @@
 
 
 // Define max and min PWM values
-#define LOWER_BND 63
+#define LOWER_BND 51
 #define UPPER_BND 255
 
 

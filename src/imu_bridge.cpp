@@ -375,39 +375,52 @@ int main() {
 
 //     ConnectionBridge bno = {OperationMode::OPERATION_MODE_IMUPLUS};
 //     bno.setExtCrystalUse(true);
+//     ros::init(ros::M_string(), "imu_test");
 //     float accel_vec[3] = {};
 //     float gyro_vec[3] = {};
+//     float pos_vec[3] = {};
+//     float rot_vec[3] = {};
 //     byte sys_stat = 0;
 //     byte gyro = 0;
 //     byte accel = 0;
 //     byte mag = 0;
 //     bool fully_calib = false;
-//     int errors = 0;
+//     ros::WallTime prev_time = ros::WallTime::now();
 
 //     while (true) {
 //         bno.getVector(accel_vec, VectorMappings::VECTOR_LINEARACCEL);
-//         bno.getVector(gyro_vec, VectorMappings::VECTOR_EULER); 
-//         if (fabs(accel_vec[0]) > 1.1f || fabs(gyro_vec[0]) > 7) {
-//             errors++;
-//         }
+//         bno.getVector(gyro_vec, VectorMappings::VECTOR_GYROSCOPE);
+
+//         ros::WallTime curr_time = ros::WallTime::now();
+//         double t_delta = (curr_time - prev_time).toSec();
+//         prev_time = curr_time;
+
+//         pos_vec[0] += 0.5 * accel_vec[0] * t_delta * t_delta;
+//         pos_vec[1] += 0.5 * accel_vec[1] * t_delta * t_delta;
+//         pos_vec[2] += 0.5 * accel_vec[2] * t_delta * t_delta;
+
+//         rot_vec[0] += 0.5 * gyro_vec[0] * t_delta * t_delta;
+//         rot_vec[1] += 0.5 * gyro_vec[1] * t_delta * t_delta;
+//         rot_vec[2] += 0.5 * gyro_vec[2] * t_delta * t_delta;
+        
 //         // bno.getCalibration(sys_stat, gyro, accel, mag);
 //         // fully_calib = bno.isFullyCalibrated();
-//         std::cout << std::fixed << std::setw(7) << std::setprecision(2) 
+//         std::cout << std::fixed << std::setw(8) << std::setprecision(4) 
 //                     << "Accel:\n"
-//                     << "  x = " << accel_vec[0] << "\n"
-//                     << "  y = " << accel_vec[1] << "\n"
-//                     << "  z = " << accel_vec[2] << "\n"
+//                     << "  x = " << pos_vec[0] << "\n"
+//                     << "  y = " << pos_vec[1] << "\n"
+//                     << "  z = " << pos_vec[2] << "\n"
 //                     << "Gyro:\n"
-//                     << "  x = " << gyro_vec[0] << "\n"
-//                     << "  y = " << gyro_vec[1] << "\n"
-//                     << "  z = " << gyro_vec[2] << "\n"
-//                     << "Errors: " << errors <<"\n"
+//                     << "  x = " << rot_vec[0] << "\n"
+//                     << "  y = " << rot_vec[1] << "\n"
+//                     << "  z = " << rot_vec[2] << "\n"
+//                     << "Time: " <<  t_delta
 //                     << std::endl;
 //                     // std::cout << "Calib (" << (fully_calib ? "is" : "isn't") << " fully calibrated):\n"
 //                     // << "  acc = " << (int) accel << "\n"
 //                     // << "  gyr = " << (int) gyro << "\n"
 //                     // << "  mag = " << (int) mag << "\n" << std::endl;
-//         delay(50);
+//         delay(10);
 //     }
 // }
 

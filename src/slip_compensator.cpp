@@ -104,14 +104,10 @@ public:
 
     /**
      * @brief Calculate steering based on internal variables and provided target, process value and time difference
-     * @param sp current target (aka setpoint)
-     * @param pv current process value
+     * @param sp current error
      * @param time_diff time difference between this and past loop
      */
-    void calculateSteering(float sp, float pv, float time_diff) {
-        // Calculate current error
-        float err = sp - pv;
-
+    void calculateSteering(float err, float time_diff) {
         // Calculate integral
         err_integ = err_integ + (err * time_diff);
 
@@ -174,8 +170,8 @@ public:
                    , traveled_distance_(0.0f)
                    , current_angle_(0.0f)
                    , angle_offset_(0.0f)
-                   , angular_pid_(1, 0, 0)
-                   , linear_pid_(1, 0, 0) {
+                   , angular_pid_(1.0f, 0.2f, 0.0f)
+                   , linear_pid_(1.0f, 0.0f, 0.0f) {
         ROS_INFO("Starting up %s node:", node_name_.c_str());
 
         // Create service server, that receives requests from /add_relative_target topic and passes them to
@@ -253,8 +249,11 @@ public:
     bool addRelativeTargetServer(tank_controller::addRelativeTarget::Request &req, tank_controller::addRelativeTarget::Response &res) {
         // Fill in response header
         res.header.stamp = ros::Time::now();
+
+        // If target queue is empty, call targetReached function to set current robot's position as starting one
+        targetReached(true);
         
-        // First make sure angle is within (-pi, pi) range
+        // Make sure angle is within (-pi, pi) range
         float angle = fmod(req.angle, 2.0f * M_PIf32);
         angle = fabs(angle) > M_PIf32 ? std::copysignf(M_PIf32, angle) - angle : angle;
 
@@ -392,8 +391,12 @@ public:
         time_diff_ = (msg->header.stamp - last_imu_callback_).toSec();
         last_imu_callback_ = msg->header.stamp;
 
-        // Update traveled distance and current angle (as of this verison do it without any filtering)
-        traveled_distance_ = traveled_distance_ + (msg->linear.x * time_diff_);
+        // If not stopped update traveled distance (as of this verison do it without any filtering)
+        if (!stop_) {
+            traveled_distance_ = traveled_distance_ + (msg->linear.x * time_diff_);
+        }
+        
+        // Always update current angle
         current_angle_ = msg->rotation.z;
     }
 
@@ -433,17 +436,17 @@ public:
     }
 
     /**
-     * @brief Function called inside loop to publish distance and angle remaining to current targetd
+     * @brief Function called inside calculateSteering function to publish distance remaining to target
      */
-    void remainingDistancePublish() {
+    void remainingDistancePublish(float linear_err, float angular_err) {
         // Create message and fill in header
         tank_controller::remainingDistance msg;
         msg.header.stamp = ros::Time::now();
 
         // Fill in data and publish message
         if (!target_queue_.empty()) {
-            msg.distance = linear_pid_.err_prev;
-            msg.angle = angular_pid_.err_prev;
+            msg.distance = linear_err != 0.0f ? linear_err : target_queue_.front().x;
+            msg.angle = angular_err != 0.0f ? angular_err : target_queue_.front().z;
         } else {
             msg.distance = std::nanf("");
             msg.angle = std::nanf("");
@@ -457,12 +460,16 @@ public:
      */
     void calculateSteering() {
         if (!stop_ && !target_queue_.empty()) {
+            // Calculate errors
+            float angular_error = target_queue_.front().z + angle_offset_ - current_angle_;
+            float linear_error = target_queue_.front().x - traveled_distance_;
+
             // Calculate angular steering
-            angular_pid_.calculateSteering(target_queue_.front().z, current_angle_ - angle_offset_, time_diff_);
+            angular_pid_.calculateSteering(angular_error, time_diff_);
 
             // If angular error is within acceptable range calculate linear stering 
             if (fabs(angular_pid_.err_prev) <= acceptable_angle_error_) {
-                linear_pid_.calculateSteering(target_queue_.front().x, traveled_distance_, time_diff_);
+                linear_pid_.calculateSteering(linear_error, time_diff_);
             } else {
                 linear_pid_.u = 0.0f;
             }
@@ -471,9 +478,14 @@ public:
             if (fabs(angular_pid_.err_prev) <= target_queue_.front().z_err && fabs(linear_pid_.err_prev) <= target_queue_.front().x_err) {
                 targetReached();
             }
+
+            // Publish remaining errors
+            remainingDistancePublish(linear_error, angular_error);
         } else {
             angular_pid_.u = 0.0f;
             linear_pid_.u = 0.0f;
+
+            remainingDistancePublish(linear_pid_.err_prev, angular_pid_.err_prev);
         }
     }
 
@@ -490,7 +502,6 @@ public:
 
             // Publish steering and remaining distance
             motorsAutoControlPublish();
-            remainingDistancePublish();
 
             // Wait for subscribers
             ros::spinOnce();

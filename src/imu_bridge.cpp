@@ -148,17 +148,10 @@ public:
              , accel_calib_(0U)
              , gyro_calib_(0U)
              , accel_()
-             , time_prev_(0)
-             , velocity_()
-             , velocity_prev_()
-             , velocity_filtered_()
-             , rotation_()  {
+             , rotation_()
+             , rotation_prev_()
+             , rotation_filtered_()  {
         ROS_INFO("Starting up %s node:", node_name_.c_str());
-
-        // Create service server, that receives requests from /imu_reset_variables topic and passes them to
-        // function resetVariablesServer, which is a method of ImuBridge class and belongs to "this" object 
-        reset_vars_ser_ = nh_.advertiseService("/imu_reset_variables", &ImuBridge::resetVariablesServer, this);
-        ROS_INFO(" - /global_stop service created");
 
         // Create publisher that sends messages of type tank_controller/imuData to /imu_data topic with message queue size equal to 1
         imu_data_pub_ = nh_.advertise<tank_controller::imuData>("/imu_data", 1);
@@ -186,27 +179,12 @@ public:
     }
 
     /**
-     * @brief Function called automatically whenever new imuResetVariables request is received by service server.
-     * There is no need for user to call this function manually!
-     * @param req reference to request message, passed automatically by ROS
-     * @param res reference to response message, passed automatically by ROS
-     * @return true (always)
-     */
-    bool resetVariablesServer(tank_controller::imuResetVariables::Request &req, tank_controller::imuResetVariables::Response &res) {
-        // Reset internal variables
-        this->resetVariables_();
-
-        ROS_WARN("Internal variables have been zeroed");
-        return true;
-    }
-
-    /**
-     * @brief Function called automatically by ros::Timer in regular time intervals to read and process data from sensor
+     * @brief Function called automatically by in regular time intervals to read and process data from sensor
      * There is no need for user to call this function manually!
      * @param event Struct holding some basic time-oriented data, passed by ros
      */
     void readSensorData() {     
-        // Read calibration data1C:A0:B8:01:CE:F2
+        // Read calibration data
         uint8_t sys_stat_calib = 0U;
         uint8_t mag_calib = 0U;
         bno_ptr_->getCalibration(sys_stat_calib, gyro_calib_, accel_calib_, mag_calib);
@@ -218,11 +196,10 @@ public:
             rotation_.x = rotation_buffer[2] * DEG_2_RAD;
             rotation_.y = rotation_buffer[1] * (-DEG_2_RAD);
             rotation_.z = (rotation_buffer[0] - 180.0f) * (-DEG_2_RAD);
-        } // Otherwise  use old data (so no action is necessary)
-        // Since Adafruit BNO055 sensor automatically filters data for Euler vector there is no need to use low pass filter
+        } // Otherwise use old data (so no action is necessary)
 
-        // Get current time
-        ros::WallTime time_curr = ros::WallTime::now();
+        // Use low-pass filter
+        rotation_filtered_ = rotation_filtered_ * 0.63946 + rotation_ * 0.18027 + rotation_prev_ * 0.18027;
 
         // Read acceleration data and (if read succeeded) scale it
         float accel_buffer[3] = {0.0f, 0.0f, 0.0f};
@@ -233,20 +210,11 @@ public:
             accel_.y = -accel_buffer[1];
             accel_.z = -accel_buffer[2];
         } // Otherwise use old data (so no action is necessary)
-
-        // Calculate integral
-        velocity_ = accel_ * (time_curr - time_prev_).toSec() + velocity_prev_; // ############### use filetered velocity instead of previous?   
-
-        // Low pass filter
-        velocity_filtered_ = velocity_filtered_ * 0.63946 + velocity_ * 0.18027 + velocity_prev_ * 0.18027;
-
-        // Update remaining values
-        time_prev_ = time_curr;
-        velocity_prev_ = velocity_;
+        // Publish raw accel data
     }
 
     /**
-     * @brief Function called automatically by ros::Timer in regular time intervals to publish processed data to /imu_data topic
+     * @brief Function called automatically in regular time intervals to publish processed data to /imu_data topic
      * There is no need for user to call this function manually!
      * @param event Struct holding some basic time-oriented data, passed by ros
      */
@@ -260,13 +228,13 @@ public:
         msg.gyroscopeCalib = gyro_calib_;
 
         // Fill velocity data
-        msg.linear.x = velocity_filtered_.x;
-        msg.linear.y = velocity_filtered_.y;
-        msg.linear.z = velocity_filtered_.z;
+        msg.acceleration.x = accel_.x;
+        msg.acceleration.y = accel_.y;
+        msg.acceleration.z = accel_.z;
 
-        msg.rotation.x = rotation_.x;
-        msg.rotation.y = rotation_.y;
-        msg.rotation.z = rotation_.z;
+        msg.rotation.x = rotation_filtered_.x;
+        msg.rotation.y = rotation_filtered_.y;
+        msg.rotation.z = rotation_filtered_.z;
 
         // Publish message
         imu_data_pub_.publish(msg);
@@ -277,9 +245,6 @@ public:
      * @return EXIT_SUCCESS if closed properly
      */
     int run() {
-        // Reset internal variables (juuust in case)
-        resetVariables_();
-
         // Start up threads
         std::thread reader(&ImuBridge::startReadingData_, this);
         std::thread publisher(&ImuBridge::startPublishingData_, this);
@@ -301,24 +266,6 @@ public:
 
 
 private:
-    /**
-     * @brief Resets nodes internal variables (that is integrals, filters etc.)
-     */
-    void resetVariables_() {
-        // Reset calibration values
-        accel_calib_ = 0U;
-        gyro_calib_ = 0U;
-
-        // Reset velocity but keep timer running!
-        time_prev_ = ros::WallTime::now();
-        accel_.setZero();
-        velocity_.setZero();
-        velocity_prev_.setZero();
-        velocity_filtered_.setZero();
-
-        // No need to reset rotation data
-    }
-
     /**
      * @brief Function passed to std::thread. Takes care of reading sensor data
      */
@@ -349,19 +296,15 @@ private:
     uint8_t gyro_calib_;
     
     Vector accel_;
-    ros::WallTime time_prev_;
-    Vector velocity_;
-    Vector velocity_prev_;
-    Vector velocity_filtered_;
-
     Vector rotation_;
+    Vector rotation_prev_;
+    Vector rotation_filtered_;
 
     std::unique_ptr<ConnectionBridge> bno_ptr_;
 
     ros::NodeHandle nh_;
     int read_wait_;
     ros::Rate publish_rate_;
-    ros::ServiceServer reset_vars_ser_;
     ros::Publisher imu_data_pub_;
 };
 

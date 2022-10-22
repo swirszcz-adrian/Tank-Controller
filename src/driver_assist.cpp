@@ -8,11 +8,12 @@
 
 #include <iostream>
 #include <sstream>
-#include <math.h>
 #include <queue>
+#include <math.h>
 
 // 0.9 * pi
-#define SEPARATE_ANGLE 2.8274333882f
+#define PI 3.14159265359f
+#define TWO_PI 6.28318530718f
 
 /**
  * @brief Simple struct to allow target's data to be stored in std::vector
@@ -133,9 +134,9 @@ public:
 
 
 /**
- * @brief Class responsible for compensating robot's slips and making sure it reaches its targets
+ * @brief Class responsible for assisting with driving by automatically reaching given targets
  */
-class SlipCompensator {
+class DriverAssist {
 private:
     /**
      * @brief Function called only inside constructor initializer list to avoid problems with ROS
@@ -150,48 +151,51 @@ private:
 
 public:
     /**
-     * @brief Construct a new SlipCompensator object, that is object of a lass responsible for compensating robot's slips and making sure it reaches its targets
+     * @brief Construct a new DriverAssist object, that is object of a class responsible for assisting with driving by automatically reaching given targets
      * @param default_distance_error default value of distance error (used if service client didn't specify one)
      * @param default_angle_error_ default value of angle error (used if service client didn't specify one)
      * @param acceptable_angle_error angle error at which robot will start to move (robot won't drive forwards as long as angle error is greater than this value)
      * @param loop_rate rate at which program should run
      */
-    SlipCompensator(float default_distance_error = 0.05f, float default_angle_error_ = 0.017453f, float acceptable_angle_error = 0.087266f, int loop_rate = 30) 
-                   : node_name_(SlipCompensator::rosInit("slip_compensator")) 
+    DriverAssist(float max_linear = 1.5, float max_angular = TWO_PI, float default_distance_error = 0.05f, float default_angle_error_ = 0.017453f, float acceptable_angle_error = 0.087266f, int loop_rate = 30) 
+                   : node_name_(DriverAssist::rosInit("driver_assist")) 
                    , nh_(ros::NodeHandle())
                    , loop_rate_(ros::Rate(loop_rate))
+                   , max_linear_(fabs(max_linear))
+                   , max_angular_(fabs(max_angular))
                    , default_distance_error_(default_distance_error)
                    , default_angle_error_(default_angle_error_)
-                   , acceptable_angle_error_(acceptable_angle_error)
+                   , static_angle_error_(acceptable_angle_error)
+                   , moving_angle_error_(3.0f * acceptable_angle_error)
                    , stop_(true)
-                   , last_imu_callback_(0.0f)
+                   , last_motors_callback_(0.0f)
                    , time_diff_(0.0f)
                    , target_queue_()
                    , traveled_distance_(0.0f)
-                   , current_angle_(0.0f)
-                   , angle_offset_(0.0f)
-                   , angular_pid_(1.0f, 0.2f, 0.0f)
+                   , relative_angle_(0.0f)
+                   , prev_rotation_(0.0f)
+                   , angular_pid_(1.0f, 0.1f, 0.0f)
                    , linear_pid_(1.0f, 0.0f, 0.0f) {
         ROS_INFO("Starting up %s node:", node_name_.c_str());
 
         // Create service server, that receives requests from /add_relative_target topic and passes them to
-        // function addRelativeTargetServer which is a method of SlipCompensator class and belongs to "this" object 
-        add_rel_target_ser_ = nh_.advertiseService("/add_relative_target", &SlipCompensator::addRelativeTargetServer, this);
+        // function addRelativeTargetServer which is a method of DriverAssist class and belongs to "this" object 
+        add_rel_target_ser_ = nh_.advertiseService("/add_relative_target", &DriverAssist::addRelativeTargetServer, this);
         ROS_INFO(" - /add_relative_target service created");
 
         // Create service server, that receives requests from /clear_targets topic and passes them to
-        // function clearTargetsServer which is a method of SlipCompensator class and belongs to "this" object 
-        clear_targets_ser_ = nh_.advertiseService("/clear_targets", &SlipCompensator::clearTargetsServer, this);
+        // function clearTargetsServer which is a method of DriverAssist class and belongs to "this" object 
+        clear_targets_ser_ = nh_.advertiseService("/clear_targets", &DriverAssist::clearTargetsServer, this);
         ROS_INFO(" - /clear_targets service created");
 
         // Create subscriber, that receives data from /imu_data topic with queue size equal to 1 and calls back
-        // function imuDataCallback which is a method of SlipCompensator class and belongs to "this" object 
-        imu_data_sub_ = nh_.subscribe("/imu_data", 1, &SlipCompensator::imuDataCallback, this);
+        // function imuDataCallback which is a method of DriverAssist class and belongs to "this" object 
+        imu_data_sub_ = nh_.subscribe("/imu_data", 1, &DriverAssist::imuDataCallback, this);
         ROS_INFO(" - /imu_data subscriber created");
 
         // Create subscriber, that receives data from /motors_data topic with queue size equal to 1 and calls back
-        // function motorsDataCallback which is a method of SlipCompensator class and belongs to "this" object 
-        motors_data_sub_ = nh_.subscribe("/motors_data", 1, &SlipCompensator::motorsDataCallback, this);
+        // function motorsDataCallback which is a method of DriverAssist class and belongs to "this" object 
+        motors_data_sub_ = nh_.subscribe("/motors_data", 1, &DriverAssist::motorsDataCallback, this);
         ROS_INFO(" - /motors_data subscriber created");
 
         // Create publisher that sends messages of type tank_controller::motorsAutoControl to /motors_auto_control topic with message queue size equal to 1
@@ -206,14 +210,14 @@ public:
     }
 
     // Remove copy constructor and assignement operator since they won't be needed
-    SlipCompensator(const SlipCompensator &) = delete;
-    SlipCompensator& operator=(const SlipCompensator &) = delete;
+    DriverAssist(const DriverAssist &) = delete;
+    DriverAssist& operator=(const DriverAssist &) = delete;
 
-    /**
-     * @brief Destroy the SlipCompensator object and print short message
+    /**#define ONE_AND_HALF_PI 4.71238898038
+     * @brief Destroy the DriverAssist object and print short message
      */
-    ~SlipCompensator() {
-        std::cout << "|===== Node has been successfully destroyed =====" << std::endl;
+    ~DriverAssist() {
+        std::cout << "|===== Node has been successfully destroyed =max_a====" << std::endl;
     }
 
     /**
@@ -227,7 +231,7 @@ public:
         }
 
         // Set angle offset to current angle
-        angle_offset_ = current_angle_;
+        relative_angle_ = 0.0f;
 
         // Set traveled distance to 0
         traveled_distance_ = 0.0f;
@@ -250,65 +254,37 @@ public:
         // Fill in response header
         res.header.stamp = ros::Time::now();
 
-        // If target queue is empty, call targetReached function to set current robot's position as starting one
-        targetReached(true);
+        // If target queue is empty, reset angle offset and traveled distance
+        if (target_queue_.empty()) {
+            relative_angle_ = 0.0f;
+            traveled_distance_ = 0.0f;
+        }
         
         // Make sure angle is within (-pi, pi) range
-        float angle = fmod(req.angle, 2.0f * M_PIf32);
-        angle = fabs(angle) > M_PIf32 ? std::copysignf(M_PIf32, angle) - angle : angle;
+        float angle = fmod(req.angle, TWO_PI);
+        angle = fabs(angle) > PI ? std::copysignf(PI, angle) - angle : angle;
 
-        // To avoid problems with angles close to pi add two points (one for partial rotation, other to finish rotation and start moving)
-        if (fabs(angle) > SEPARATE_ANGLE) {
-            // Get error values (angle error should be divided by 2 since two points will be added)
-            float angle_error = req.angle_error > 0.0f ? req.angle_error * 0.5f : default_angle_error_ * 0.5f;
-            float distance_error = req.distance_error > 0.0f ? req.distance_error : default_distance_error_;
+        // Fill angle and distance error (if not specified)
+        float angle_error = req.angle_error > 0.0f ? req.angle_error : default_angle_error_;
+        float distance_error = req.distance_error > 0.0f ? req.distance_error : default_distance_error_;
 
-            // Get angle values for both points
-            float first_angle = std::copysignf(SEPARATE_ANGLE, angle);
-            float second_angle = angle - first_angle;
-
-            // Try to add points to queue
-            try {
-                target_queue_.push(relativeTarget(0.0f, first_angle, distance_error, angle_error));
-                target_queue_.push(relativeTarget(req.distance, second_angle, distance_error, angle_error));
-
-            // If failed return appropriate message
-            } catch(...) {
-                res.feedback = "Failed to add point, target queue is full";
-                ROS_WARN("Failed to add point, target queue is full");
-
-                return true;
-            }
-
-            // Otherwise inform that two pints have been added
-            res.feedback = "Added two points to prevent PID controller from continous spin";
-            ROS_INFO("Added two points to prevent PID controller from continous spin");
-
-            return true;
-
-        // If angle is not too big add only one point
-        } else {
-            float angle_error = req.angle_error > 0.0f ? req.angle_error : default_angle_error_;
-            float distance_error = req.distance_error > 0.0f ? req.distance_error : default_distance_error_;
-
-            // Try to add point
-            try {
-                target_queue_.push(relativeTarget(req.distance, angle, distance_error, angle_error));
-            
-            // If failed return appropriate message
-            } catch(...) {
-                res.feedback = "Failed to add point, target queue is full";
-                ROS_WARN("Failed to add point, target queue is full");
-
-                return true;
-            }
-
-            // Otherwise inform that point has been added
-            res.feedback = "Point has been successfully added";
-            ROS_INFO("Point has been successfully added");
+        // Try to add point
+        try {
+            target_queue_.push(relativeTarget(req.distance, angle, distance_error, angle_error));
+        
+        // If failed return appropriate message
+        } catch(...) {
+            res.feedback = "Failed to add point, target queue is full";
+            ROS_WARN("Failed to add point, target queue is full");
 
             return true;
         }
+
+        // Otherwise inform that point has been added
+        res.feedback = "Point has been successfully added";
+        ROS_INFO("Point has been successfully added");
+
+        return true;
     }
 
     /**
@@ -370,11 +346,14 @@ public:
                 std::queue<relativeTarget> new_target_queue;
                 std::swap(target_queue_, new_target_queue);
 
+                // Make sure robots doesn't start going backwards
+                targetReached(true);
+
                 // Send feedback
-                res.feedback = "Removed " + std::to_string(elems) + " elements from target vector";
+                res.feedback = "Removed " + std::to_string(elems) + " elements from target queue";
                 ROS_WARN(res.feedback.c_str());
             } else {
-                res.feedback = "Target vector empty - there was nothing to remove";
+                res.feedback = "Target queue empty - there was nothing to remove";
             }
         }
 
@@ -387,17 +366,29 @@ public:
      * @param msg Passed automatically by ROS subscriber
      */
     void imuDataCallback(const tank_controller::imuData::ConstPtr &msg) {
-        // Update time-based variables
-        time_diff_ = (msg->header.stamp - last_imu_callback_).toSec();
-        last_imu_callback_ = msg->header.stamp;
-
-        // If not stopped update traveled distance (as of this verison do it without any filtering)
+        // If not stopped update current angle 9no need for filtering, sensor has built-in filter)
         if (!stop_) {
-            traveled_distance_ = traveled_distance_ + (msg->linear.x * time_diff_);
+            // Calculate rotation difference
+            float diff = msg->rotation.z - prev_rotation_;
+
+            // Difference greater than 2*pi is treated as an error
+            if (fabs(diff) <= TWO_PI) {
+                // If difference is too big it means -pi/pi breakpoint has been passed
+                // In that case add or subtract 2*pi from diff value
+                if (diff > PI) {
+                    diff = diff - TWO_PI;
+                } else if (diff < -PI) {
+                    diff = TWO_PI - diff;
+                } // Above statements could've been done in one line, but this way is more readable and much cleaner  
+
+                std::cout << diff << std::endl;
+                // Add diff to current angle
+                relative_angle_ += diff;
+            } 
         }
         
-        // Always update current angle
-        current_angle_ = msg->rotation.z;
+        // Always update previous rotation
+        prev_rotation_ = msg->rotation.z;
     }
 
     /**
@@ -406,19 +397,17 @@ public:
      * @param msg Passed automatically by ROS subscriber
      */
     void motorsDataCallback(const tank_controller::motorsData::ConstPtr &msg) {
-        // Enable/disable stop and (if needed) update current angle offset
-        if (!stop_ && msg->isStopped) {
-            stop_ = true;
-        } else if (stop_ && !msg->isStopped) {
-            if (target_queue_.empty()) {
-                angle_offset_ = current_angle_;
-            } else {
-                angle_offset_ = current_angle_ + (target_queue_.front().z - angular_pid_.err_prev);
-            }
-            stop_ = false;
-        }
+        // Enable/disable stop
+        stop_ = msg->isStopped;
 
-        // As of this version rest of motors data is not used
+        // Update time
+        time_diff_ = (msg->header.stamp - last_motors_callback_).toSec();
+        last_motors_callback_ = msg->header.stamp;
+        
+        // If not stopped update traveled distance
+        if (!stop_) {
+            traveled_distance_ += msg->linear.x * time_diff_;
+        }
     }
 
     /**
@@ -459,19 +448,24 @@ public:
      * @brief Function called inside loop to calculate current steering values
      */
     void calculateSteering() {
+        // IF not stopped and has target calculate steering
         if (!stop_ && !target_queue_.empty()) {
             // Calculate errors
-            float angular_error = target_queue_.front().z + angle_offset_ - current_angle_;
+            float angular_error = target_queue_.front().z - relative_angle_;
             float linear_error = target_queue_.front().x - traveled_distance_;
 
-            // Calculate angular steering
+            // Calculate and constrain angular steering
             angular_pid_.calculateSteering(angular_error, time_diff_);
+            angular_pid_.u = fabs(angular_pid_.u > max_angular_) ? std::copysignf(max_angular_, angular_pid_.u) : angular_pid_.u;
 
-            // If angular error is within acceptable range calculate linear stering 
-            if (fabs(angular_pid_.err_prev) <= acceptable_angle_error_) {
+            // If angular error is within acceptable range calculate and constrain linear stering 
+            if ((linear_pid_.u == 0.0f && fabs(angular_pid_.err_prev) <= static_angle_error_) || (linear_pid_.u != 0.0f && fabs(angular_pid_.err_prev) <= moving_angle_error_)) {
                 linear_pid_.calculateSteering(linear_error, time_diff_);
+                linear_pid_.u = fabs(linear_pid_.u > max_linear_) ? std::copysignf(max_linear_, linear_pid_.u) : linear_pid_.u;
+
+            // If not set linear steering to 0
             } else {
-                linear_pid_.u = 0.0f;
+                linear_pid_.reset();
             }
 
             // If both errors are within acceptable range mark target as reached
@@ -481,9 +475,11 @@ public:
 
             // Publish remaining errors
             remainingDistancePublish(linear_error, angular_error);
+
+        // Otherwise set steering to 0
         } else {
-            angular_pid_.u = 0.0f;
-            linear_pid_.u = 0.0f;
+            angular_pid_.reset();
+            linear_pid_.reset();
 
             remainingDistancePublish(linear_pid_.err_prev, angular_pid_.err_prev);
         }
@@ -523,19 +519,23 @@ public:
 
 private:
     std::string node_name_;
+
+    float max_linear_;
+    float max_angular_;
     
     std::queue<relativeTarget> target_queue_;
     float default_distance_error_;
     float default_angle_error_;
-    float acceptable_angle_error_;
+    float static_angle_error_;
+    float moving_angle_error_;
 
     bool stop_;
-    ros::Time last_imu_callback_;
+    ros::Time last_motors_callback_;
     float time_diff_;
 
     float traveled_distance_;
-    float current_angle_;
-    float angle_offset_;
+    float relative_angle_;
+    float prev_rotation_;
 
     PIDvariables angular_pid_;
     PIDvariables linear_pid_;
@@ -551,6 +551,6 @@ private:
 };
 
 int main() {
-    SlipCompensator slip_compensator = {};
-    slip_compensator.run();
+    DriverAssist driver_assist = {};
+    driver_assist.run();
 }

@@ -1,5 +1,5 @@
 Header header
 uint8 accelerometerCalib
 uint8 gyroscopeCalib
-vector3D linear
+vector3D acceleration
 vector3D rotation

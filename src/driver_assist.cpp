@@ -378,12 +378,17 @@ public:
                 if (diff > PI) {
                     diff = diff - TWO_PI;
                 } else if (diff < -PI) {
-                    diff = TWO_PI - diff;
+                    diff = diff + TWO_PI;
                 } // Above statements could've been done in one line, but this way is more readable and much cleaner  
 
-                std::cout << diff << std::endl;
                 // Add diff to current angle
                 relative_angle_ += diff;
+
+                std::cout << std::fixed << std::setw(10) << std::setprecision(4) 
+                          << "CURR: " << msg->rotation.z * 180 / PI 
+                          << " PREV: " << prev_rotation_ * 180 / PI 
+                          << " DIFF: " << diff * 180 / PI 
+                          << " TOTAL: " << relative_angle_ * 180 / PI << std::endl;
             } 
         }
         

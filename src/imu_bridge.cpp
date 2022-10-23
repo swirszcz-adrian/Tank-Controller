@@ -148,9 +148,7 @@ public:
              , accel_calib_(0U)
              , gyro_calib_(0U)
              , accel_()
-             , rotation_()
-             , rotation_prev_()
-             , rotation_filtered_()  {
+             , rotation_() {
         ROS_INFO("Starting up %s node:", node_name_.c_str());
 
         // Create publisher that sends messages of type tank_controller/imuData to /imu_data topic with message queue size equal to 1
@@ -198,9 +196,6 @@ public:
             rotation_.z = (rotation_buffer[0] - 180.0f) * (-DEG_2_RAD);
         } // Otherwise use old data (so no action is necessary)
 
-        // Use low-pass filter
-        rotation_filtered_ = rotation_filtered_ * 0.63946 + rotation_ * 0.18027 + rotation_prev_ * 0.18027;
-
         // Read acceleration data and (if read succeeded) scale it
         float accel_buffer[3] = {0.0f, 0.0f, 0.0f};
         if (bno_ptr_->getVector(accel_buffer, VectorMappings::VECTOR_LINEARACCEL)) {
@@ -232,9 +227,9 @@ public:
         msg.acceleration.y = accel_.y;
         msg.acceleration.z = accel_.z;
 
-        msg.rotation.x = rotation_filtered_.x;
-        msg.rotation.y = rotation_filtered_.y;
-        msg.rotation.z = rotation_filtered_.z;
+        msg.rotation.x = rotation_.x;
+        msg.rotation.y = rotation_.y;
+        msg.rotation.z = rotation_.z;
 
         // Publish message
         imu_data_pub_.publish(msg);
@@ -297,8 +292,6 @@ private:
     
     Vector accel_;
     Vector rotation_;
-    Vector rotation_prev_;
-    Vector rotation_filtered_;
 
     std::unique_ptr<ConnectionBridge> bno_ptr_;
 

@@ -157,7 +157,7 @@ public:
      * @param acceptable_angle_error angle error at which robot will start to move (robot won't drive forwards as long as angle error is greater than this value)
      * @param loop_rate rate at which program should run
      */
-    DriverAssist(float max_linear = 1.5, float max_angular = TWO_PI, float default_distance_error = 0.05f, float default_angle_error_ = 0.017453f, float acceptable_angle_error = 0.087266f, int loop_rate = 30) 
+    DriverAssist(float max_linear = 1.5, float max_angular = TWO_PI, float default_distance_error = 0.1f, float default_angle_error_ = 0.087266f, float acceptable_angle_error = 0.1745329f, int loop_rate = 30) 
                    : node_name_(DriverAssist::rosInit("driver_assist")) 
                    , nh_(ros::NodeHandle())
                    , loop_rate_(ros::Rate(loop_rate))
@@ -165,7 +165,6 @@ public:
                    , max_angular_(fabs(max_angular))
                    , default_distance_error_(default_distance_error)
                    , default_angle_error_(default_angle_error_)
-                   , static_angle_error_(acceptable_angle_error)
                    , moving_angle_error_(3.0f * acceptable_angle_error)
                    , stop_(true)
                    , last_motors_callback_(0.0f)
@@ -174,8 +173,8 @@ public:
                    , traveled_distance_(0.0f)
                    , relative_angle_(0.0f)
                    , prev_rotation_(0.0f)
-                   , angular_pid_(1.0f, 0.1f, 0.0f)
-                   , linear_pid_(1.0f, 0.0f, 0.0f) {
+                   , angular_pid_(2.0f, 0.3f, 0.1f)
+                   , linear_pid_(0.5f, 0.2f, 0.1f) {
         ROS_INFO("Starting up %s node:", node_name_.c_str());
 
         // Create service server, that receives requests from /add_relative_target topic and passes them to
@@ -371,25 +370,16 @@ public:
             // Calculate rotation difference
             float diff = msg->rotation.z - prev_rotation_;
 
-            // Difference greater than 2*pi is treated as an error
-            if (fabs(diff) <= TWO_PI) {
-                // If difference is too big it means -pi/pi breakpoint has been passed
-                // In that case add or subtract 2*pi from diff value
-                if (diff > PI) {
-                    diff = diff - TWO_PI;
-                } else if (diff < -PI) {
-                    diff = diff + TWO_PI;
-                } // Above statements could've been done in one line, but this way is more readable and much cleaner  
+            // If difference is too big it means -pi/pi breakpoint has been passed
+            // In that case add or subtract 2*pi from diff value
+            if (diff > PI) {
+                diff = diff - TWO_PI;
+            } else if (diff < -PI) {
+                diff = diff + TWO_PI;
+            } // Above statements could've been done in one line, but this way is more readable and much cleaner  
 
-                // Add diff to current angle
-                relative_angle_ += diff;
-
-                std::cout << std::fixed << std::setw(10) << std::setprecision(4) 
-                          << "CURR: " << msg->rotation.z * 180 / PI 
-                          << " PREV: " << prev_rotation_ * 180 / PI 
-                          << " DIFF: " << diff * 180 / PI 
-                          << " TOTAL: " << relative_angle_ * 180 / PI << std::endl;
-            } 
+            // Add diff to current angle
+            relative_angle_ += diff;
         }
         
         // Always update previous rotation
@@ -438,13 +428,8 @@ public:
         msg.header.stamp = ros::Time::now();
 
         // Fill in data and publish message
-        if (!target_queue_.empty()) {
-            msg.distance = linear_err != 0.0f ? linear_err : target_queue_.front().x;
-            msg.angle = angular_err != 0.0f ? angular_err : target_queue_.front().z;
-        } else {
-            msg.distance = std::nanf("");
-            msg.angle = std::nanf("");
-        }
+        msg.distance = linear_err;
+        msg.angle = angular_err;
         
         remain_dist_pub_.publish(msg);
     }
@@ -453,40 +438,52 @@ public:
      * @brief Function called inside loop to calculate current steering values
      */
     void calculateSteering() {
-        // IF not stopped and has target calculate steering
-        if (!stop_ && !target_queue_.empty()) {
-            // Calculate errors
+        // If has target caluculate position error
+        if (!target_queue_.empty()) {
             float angular_error = target_queue_.front().z - relative_angle_;
             float linear_error = target_queue_.front().x - traveled_distance_;
 
-            // Calculate and constrain angular steering
-            angular_pid_.calculateSteering(angular_error, time_diff_);
-            angular_pid_.u = fabs(angular_pid_.u > max_angular_) ? std::copysignf(max_angular_, angular_pid_.u) : angular_pid_.u;
+            // If not stopped calculate steering, otherwise set steering to 0 and send current position errors
+            if (!stop_) {
+                // Calculate and constrain angular steering
+                angular_pid_.calculateSteering(angular_error, time_diff_);
+                angular_pid_.u = fabs(angular_pid_.u > max_angular_) ? std::copysignf(max_angular_, angular_pid_.u) : angular_pid_.u;
 
-            // If angular error is within acceptable range calculate and constrain linear stering 
-            if ((linear_pid_.u == 0.0f && fabs(angular_pid_.err_prev) <= static_angle_error_) || (linear_pid_.u != 0.0f && fabs(angular_pid_.err_prev) <= moving_angle_error_)) {
-                linear_pid_.calculateSteering(linear_error, time_diff_);
-                linear_pid_.u = fabs(linear_pid_.u > max_linear_) ? std::copysignf(max_linear_, linear_pid_.u) : linear_pid_.u;
+                // If robot has just finished rotating (angle error within desired range and linear steering equals to 0)
+                if (linear_pid_.u == 0.0f && abs(angular_error) <= target_queue_.front().z_err) {
+                    // Reset angular pid
+                    angular_pid_.reset();
 
-            // If not set linear steering to 0
+                    // Calculate and constrain linear steering
+                    linear_pid_.calculateSteering(linear_error, time_diff_);
+                    linear_pid_.u = fabs(linear_pid_.u > max_linear_) ? std::copysignf(max_linear_, linear_pid_.u) : linear_pid_.u;
+                
+                // If robot is moving
+                } else if (linear_pid_.u != 0.0f && abs(angular_error) <= moving_angle_error_) {
+                    // Calculate and constrain linear steering
+                    linear_pid_.calculateSteering(linear_error, time_diff_);
+                    linear_pid_.u = fabs(linear_pid_.u > max_linear_) ? std::copysignf(max_linear_, linear_pid_.u) : linear_pid_.u;
+                
+                // Angle error not in acceptable bounds
+                } else {
+                    // Reset linear pid
+                    linear_pid_.reset();
+                }
+
             } else {
-                linear_pid_.reset();
+                angular_pid_.reset();
+                linear_pid_.reset();    
             }
 
-            // If both errors are within acceptable range mark target as reached
-            if (fabs(angular_pid_.err_prev) <= target_queue_.front().z_err && fabs(linear_pid_.err_prev) <= target_queue_.front().x_err) {
-                targetReached();
-            }
-
-            // Publish remaining errors
+            // Publish actual errors
             remainingDistancePublish(linear_error, angular_error);
 
-        // Otherwise set steering to 0
+        // Otherwise set steering to 0 and send NaN for distance errors
         } else {
             angular_pid_.reset();
             linear_pid_.reset();
 
-            remainingDistancePublish(linear_pid_.err_prev, angular_pid_.err_prev);
+            remainingDistancePublish(std::nanf(""), std::nanf(""));
         }
     }
 
@@ -531,7 +528,6 @@ private:
     std::queue<relativeTarget> target_queue_;
     float default_distance_error_;
     float default_angle_error_;
-    float static_angle_error_;
     float moving_angle_error_;
 
     bool stop_;

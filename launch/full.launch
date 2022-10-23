@@ -3,5 +3,5 @@
     <node pkg="tank_controller" type="arduino_bridge" name="arduino_bridge"/>
     <node pkg="tank_controller" type="gamepad_bridge" name="gamepad_bridge"/>
     <node pkg="tank_controller" type="imu_bridge" name="imu_bridge"/>
-    <node pkg="tank_controller" type="driver_assist" name="driver_assist" output="screen"/>
+    <node pkg="tank_controller" type="driver_assist" name="driver_assist"/>
 </launch>

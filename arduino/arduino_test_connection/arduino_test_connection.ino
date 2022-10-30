@@ -43,8 +43,9 @@ volatile int deltaPos[2] = {0, 0};
 volatile bool globalStop = true;
 
 
-// Variable for recording last time board received valid message
-volatile unsigned long lastMsg;
+// Variable for recording valid and bad messages
+volatile unsigned int good_msgs;
+volatile unsigned int bad_msgs;
 
 
 // Functions used to write data from encoders (two different functions since engines rotate in different directions)
@@ -210,10 +211,10 @@ PIcontroller controller[2] = { {PIcontroller(LEFT, 30, 0.3)},
 // Receive commands from USB and execute them
 // This function gets called automatically by Arduino at the end of loop if data is available
 void serialEvent() {
-  // Check if any message board received was valid
-  bool received_msg = false;
-  
   while (Serial.available() >= 5) {
+    // Check if message was valid
+    bool received_msg = false;
+    
     String full_string = Serial.readStringUntil('\n');
     full_string.trim();
     
@@ -227,7 +228,7 @@ void serialEvent() {
       // Example value: "+3.14 -0.21"
       controller[LEFT].target_ = value.substring(0, 5).toFloat();
       controller[RIGHT].target_ = value.substring(6, 11).toFloat();
-      received_msg = true;
+      if (controller[LEFT].target_ == 2.0f && controller[RIGHT].target_ == 2.0f) { received_msg = true; }
       
     } else if (command == String("ST")) {
       // Switch globalStop to true or false
@@ -271,10 +272,14 @@ void serialEvent() {
       Serial.println(msg);
       received_msg = true;
     }
+
+    // Update message counters
+    if (received_msg) { 
+      good_msgs++; 
+    } else {
+      bad_msgs++;
+    }
   }
-  
-  // If board received at least one valid message, update timer
-  if (received_msg) { lastMsg = micros(); }
 }
 
 
@@ -304,9 +309,6 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(encA[LEFT]), readLeftEncoder, RISING);
   attachInterrupt(digitalPinToInterrupt(encA[RIGHT]), readRightEncoder, RISING);
 
-  // Initialize lastMsg variable
-  lastMsg = micros();
-
   // Initialize serial communication
   Serial.begin(9600);
 }
@@ -314,24 +316,17 @@ void setup() {
 
 // Main program loop
 void loop() {
-  // Check if board received any valid messages in given period
-  // If not, assume connection was lost and activate globalStop
-  if (micros() - lastMsg > CONNECTION_LOST_TIME) { globalStop = true; }
-  
-  
   // Do control
-  float v_left = controller[LEFT].doControl();
-  float v_right = controller[RIGHT].doControl();
-
-  // Constrain velocity values
-  v_left = constrain(v_left, -MAX_VELOCITY, MAX_VELOCITY);
-  v_right = constrain(v_right, -MAX_VELOCITY, MAX_VELOCITY);
+  float trashcan;
+  trashcan = controller[LEFT].doControl();
+  trashcan = controller[RIGHT].doControl();
 
   // Prepeare serial message
-  String message = globalStop ? String("ST ") : String("MV ");
-  message += (v_left >= 0.0f ? String("+") + String(v_left, 2) : String(v_left, 2));
-  message += (v_right >= 0.0f ? String(" +") + String(v_right, 2) : String(" ") + String(v_right, 2));
+  char buffer[15];
+  char f1 = globalStop ? 'S' : 'M';
+  char f2 = globalStop ? 'T' : 'V';
+  sprintf(buffer, "%c%c %05d %05d", f1, f2, good_msgs, bad_msgs);
 
   // Send serial message
-  Serial.println(message);
+  Serial.println(buffer);
 }

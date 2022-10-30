@@ -45,7 +45,7 @@ std::vector<std::string> split(const std::string &str, char sep=' ') {
  * @param nh node_handle
  * @param loop_rate rate at which sendmessages and check serial buffer
  */
-int testSerialQuality(ros::NodeHandle nh, ros::Rate loop_rate) {
+int testSerialConnection(ros::NodeHandle nh, ros::Rate loop_rate) {
     ROS_INFO("Attempting to open serial port");
 
     // Clear and open csv file
@@ -164,5 +164,5 @@ int main() {
     ros::init(ros::M_string(), "tester");
     ros::NodeHandle nh;
     ros::Rate loop_rate(30);
-    return testSerialQuality(nh, loop_rate);
+    return testSerialConnection(nh, loop_rate);
 }

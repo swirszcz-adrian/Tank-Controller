@@ -384,7 +384,7 @@ public:
    */
   void serialReadOnce() {
     // Read all complete datasets from serial buffer line by line
-    while (ser_.available() > 12) {
+    while (ser_.available() > 14) {
       // Read serial message
       std::string message = ser_.readline(32U, "\n");
 

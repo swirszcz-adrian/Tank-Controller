@@ -46,6 +46,8 @@ volatile bool globalStop = true;
 // Variable for recording last time board received valid message
 volatile unsigned long lastMsg;
 
+float steering[2] = {0.0f, 0.0f};
+
 
 // Functions used to write data from encoders (two different functions since engines rotate in different directions)
 void readLeftEncoder(){
@@ -177,7 +179,8 @@ public:
       err_integ_ = constrain(err_integ_ + (err * time_delta), -2496.0f, 2496.0f);
 
       // Calculate control value
-      float u = kp_ * err + ki_ * err_integ_;  
+      float u = kp_ * err + ki_ * err_integ_;
+      steering[motor_] = u;  
       
       // Separate and scale control; send data to control function
       unsigned int val = fabs(u);
@@ -328,10 +331,15 @@ void loop() {
   v_right = constrain(v_right, -MAX_VELOCITY, MAX_VELOCITY);
 
   // Prepeare serial message
-  String message = globalStop ? String("ST ") : String("MV ");
-  message += (v_left >= 0.0f ? String("+") + String(v_left, 2) : String(v_left, 2));
-  message += (v_right >= 0.0f ? String(" +") + String(v_right, 2) : String(" ") + String(v_right, 2));
-
-  // Send serial message
-  Serial.println(message);
+  if (globalStop) {
+    Serial.println("+9.99,+9.99,+9.99,");
+  } else {
+    String message = controller[LEFT].target_ >= 0 ? String("+") + String(controller[LEFT].target_, 2) : String(controller[LEFT].target_, 2);
+    message += String(",");
+    message += steering[LEFT] >= 0 ? String("+") + String(steering[LEFT], 2) : String(steering[LEFT], 2);
+    message += String(",");
+    message += v_left >= 0 ? String("+") + String(v_left, 2) : String(v_left, 2);
+    message += String(",");
+    Serial.println(message);
+  }
 }

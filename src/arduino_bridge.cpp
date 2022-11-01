@@ -1,5 +1,6 @@
 #define MAX_STEERING 9.9f
 #define WAIT_TIME 2U
+#define MAX_RECONNECTION_TRIES 10
 
 #include "ros/ros.h"
 #include "tank_controller/motorsManualControl.h"
@@ -149,6 +150,22 @@ public:
     ser_.setPort(serial_port);
     ser_.setBaudrate(serial_baudrate);
     ser_.open();
+    ROS_INFO("Attempting to open serial port. this may take a while");
+
+    // Test if connection started. If not retry (up to MAX_RECONNECTION_TRIES [s])
+    for (int i = 0; i < MAX_RECONNECTION_TRIES; i++) {
+      if (ser_.isOpen()) { break; }
+      std::string msg = "- couldn't open serial port, retrying (" + std::to_string(i) + " of " + std::to_string(MAX_RECONNECTION_TRIES) + ")";
+      ROS_WARN(msg.c_str());
+      
+      // Wait and attempt to reconnect
+      #ifdef _WIN32
+        Sleep(1000);         // 1 s
+      #else
+        usleep(1000 * 1000); // 1 s
+      #endif
+      ser_.open();
+    }
     if (!ser_.isOpen()) { ROS_FATAL(" - failed to open serial port"); }
     else { ser_.flush(); ROS_INFO(" - serial port opened"); }
     

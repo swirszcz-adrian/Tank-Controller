@@ -182,7 +182,7 @@ target_link_libraries(gamepad_bridge ${catkin_LIBRARIES} sfml-graphics)
 target_link_libraries(imu_bridge ${catkin_LIBRARIES} ${PROJECT_NAME} i2c) 
 target_link_libraries(display_bridge ${catkin_LIBRARIES} -lwiringPi -lwiringPiDev)
 target_link_libraries(driver_assist ${catkin_LIBRARIES})
-target_link_libraries(tester ${catkin_LIBRARIES})
+target_link_libraries(tester ${catkin_LIBRARIES} ${PROJECT_NAME} i2c)
 
 
 #############

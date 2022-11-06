@@ -73,7 +73,7 @@ public:
      * @param linux_restart_bluetooth_on_node_destroy only useful on linux machines if you want to disconnect gamepad after node closes
      * @param loop_rate rate at which program should read inputs and parse them to ROS topic [Hz]
      */
-    GamepadBridge(float linear_scale = 1.5f, float angular_scale = 2.0f * M_PI, float deadzone = 0.1f,  bool linux_restart_bluetooth_on_node_destroy = true, int loop_rate = 30) 
+    GamepadBridge(float linear_scale = 1.0f, float angular_scale = 1.0f * M_PI, float deadzone = 0.1f,  bool linux_restart_bluetooth_on_node_destroy = true, int loop_rate = 30) 
                  : node_name_(GamepadBridge::rosInit("gamepad_bridge"))
                  , nh_(ros::NodeHandle())
                  , loop_rate_(loop_rate)
@@ -215,12 +215,20 @@ public:
                     cross_pressed_ = false;
                 }
 
-                // Update steering (accounting for deadzone)
-                float steering_linear = -0.01f * sf::Joystick::getAxisPosition(0, LT_VERTICAL);
-                float steering_angular = -0.01 * sf::Joystick::getAxisPosition(0, LT_HORIZONTAL);
-
-                msg.linear.x = (std::fabs(steering_linear) < deadzone_ ? 0.0f : lin_scale_ * steering_linear);
-                msg.angular.z = (std::fabs(steering_angular) < deadzone_ ? 0.0f : ang_scale_ * steering_angular);
+                // Update steering (accounting for deadzone, prioritizing arrows input)
+                if (sf::Joystick::getAxisPosition(0, ARROWS_VERTICAL) != 0.0f) {
+                    msg.linear.x = -0.005 * sf::Joystick::getAxisPosition(0, ARROWS_VERTICAL);
+                } else {
+                    float steering_linear = -0.01f * sf::Joystick::getAxisPosition(0, LT_VERTICAL);
+                    msg.linear.x = (std::fabs(steering_linear) < deadzone_ ? 0.0f : lin_scale_ * steering_linear);
+                }
+                
+                if (sf::Joystick::getAxisPosition(0, ARROWS_HORIZONTAL) != 0.0f) {
+                    msg.angular.z = -0.015708f * sf::Joystick::getAxisPosition(0, ARROWS_HORIZONTAL);
+                } else {
+                    float steering_angular = -0.01 * sf::Joystick::getAxisPosition(0, LT_HORIZONTAL);
+                    msg.angular.z = (std::fabs(steering_angular) < deadzone_ ? 0.0f : ang_scale_ * steering_angular);
+                }
 
             // Otherwise set control values to 0
             } else {

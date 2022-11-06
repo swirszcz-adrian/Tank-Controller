@@ -11,7 +11,6 @@
 #include <queue>
 #include <math.h>
 
-// 0.9 * pi
 #define PI 3.14159265359f
 #define TWO_PI 6.28318530718f
 
@@ -157,7 +156,7 @@ public:
      * @param acceptable_angle_error angle error at which robot will start to move (robot won't drive forwards as long as angle error is greater than this value)
      * @param loop_rate rate at which program should run
      */
-    DriverAssist(float max_linear = 1.5, float max_angular = TWO_PI, float default_distance_error = 0.1f, float default_angle_error_ = 0.087266f, float acceptable_angle_error = 0.1745329f, int loop_rate = 30) 
+    DriverAssist(float max_linear = 1.5, float max_angular = TWO_PI, float default_distance_error = 0.2f, float default_angle_error_ = 0.1963495f, float acceptable_angle_error = 0.392699f, int loop_rate = 30) 
                    : node_name_(DriverAssist::rosInit("driver_assist")) 
                    , nh_(ros::NodeHandle())
                    , loop_rate_(ros::Rate(loop_rate))
@@ -165,7 +164,7 @@ public:
                    , max_angular_(fabs(max_angular))
                    , default_distance_error_(default_distance_error)
                    , default_angle_error_(default_angle_error_)
-                   , moving_angle_error_(3.0f * acceptable_angle_error)
+                   , moving_angle_error_(acceptable_angle_error)
                    , stop_(true)
                    , last_motors_callback_(0.0f)
                    , time_diff_(0.0f)
@@ -264,8 +263,8 @@ public:
         angle = fabs(angle) > PI ? std::copysignf(PI, angle) - angle : angle;
 
         // Fill angle and distance error (if not specified)
-        float angle_error = req.angle_error > 0.0f ? req.angle_error : default_angle_error_;
-        float distance_error = req.distance_error > 0.0f ? req.distance_error : default_distance_error_;
+        float angle_error = req.angle_error > default_angle_error_ ? req.angle_error : default_angle_error_;
+        float distance_error = req.distance_error > default_distance_error_ ? req.distance_error : default_distance_error_;
 
         // Try to add point
         try {
@@ -365,7 +364,7 @@ public:
      * @param msg Passed automatically by ROS subscriber
      */
     void imuDataCallback(const tank_controller::imuData::ConstPtr &msg) {
-        // If not stopped update current angle 9no need for filtering, sensor has built-in filter)
+        // If not stopped update current angle (no need for filtering, sensor has built-in filter)
         if (!stop_) {
             // Calculate rotation difference
             float diff = msg->rotation.z - prev_rotation_;

@@ -194,19 +194,19 @@ public:
    */
   void convertGlobalToMotors(const float &linear, const float &angular, float &left_motor, float &right_motor) {
     // Robot-specific constants:
-    // - wheel radius, r = 0.073 [m]
+    // - wheel radius, r = 0.0365 [m]
     // - wheels spacing, d = 0.18 [m]
     // - ticks per rotation, tr = 624
 
     // Convert linear velocity from [m/s] to [ticks/ms]
     // motors_linear = linear / (2 * pi * r) * tr / 1000
-    // where: 1 / (2 * pi * r) * tr / 1000 = 1.360448
-    float motors_linear = linear * 1.360448f;
+    // where: 1 / (2 * pi * r) * tr / 1000 = 2.720895
+    float motors_linear = linear * 2.720895f;
 
     // Convert angular velocity from [rad/s] to [ticks/ms]
-    // motors_angular = angular / (2 * pi) * (pi * d) / (2 * pi * r) * tr / 1000
-    // where: 1 / (2 * pi) * (pi * d) / (2 * pi * r) * tr / 1000 = 0.12244
-    float motors_angular = angular * 0.12244f;
+    // motors_angular = angular * d / (2 * pi * r) * tr / 1000
+    // where: d / (2 * pi * r) * tr / 1000 = 0.489761
+    float motors_angular = angular * 0.489761f;
 
     // Add velocities, contstrain results and update variables
     left_motor = std::min(MAX_STEERING, std::max(-MAX_STEERING, motors_linear - motors_angular));
@@ -222,7 +222,7 @@ public:
    */
   void convertMotorsToGlobal(const float &left_motor, const float &right_motor, float &linear, float &angular) {
     // Robot-specific constants:
-    // - wheel radius, r = 0.073 [m]
+    // - wheel radius, r = 0.0365 [m]
     // - wheels spacing, d = 0.18 [m]
     // - ticks per rotation, tr = 624
     
@@ -232,13 +232,13 @@ public:
 
     // Convert linear velocity from [ticks/ms] to [m/s]
     // linear = motors_linear * 2 * pi * r * 1000 / tr
-    // where: 2 * pi * r * 1000 / tr = 0.735052
-    linear = motors_linear * 0.735052f;
+    // where: 2 * pi * r * 1000 / tr = 0.367526
+    linear = motors_linear * 0.367526f;
 
     // Convert angular velocity from [ticks/ms] to [rad/s]
-    // angular = motors_angular * (2 * pi) / (pi * d) * (2 * pi * r) * 1000 / tr
-    // where: (2 * pi) / (pi * d) * (2 * pi * r) * 1000 / tr = 8.167246
-    angular = motors_angular * 8.167246f;
+    // angular = motors_angular / d * (2 * pi * r) * 1000 / tr
+    // where: 1 / d * (2 * pi * r) * 1000 / tr = 2.041811
+    angular = motors_angular * 2.041811f;
   }
 
 

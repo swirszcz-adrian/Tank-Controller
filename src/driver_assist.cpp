@@ -106,8 +106,9 @@ public:
      * @brief Calculate steering based on internal variables and provided target, process value and time difference
      * @param sp current error
      * @param time_diff time difference between this and past loop
+     * @param max_steering max value of steering
      */
-    void calculateSteering(float err, float time_diff) {
+    void calculateSteering(float err, float time_diff, float max_steering) {
         // Calculate integral
         err_integ = err_integ + (err * time_diff);
 
@@ -118,7 +119,10 @@ public:
         err_prev = err;
 
         // Calculate steering
-        u = kp * err + ki * err_integ + kd * err_der;
+        float steering = kp * err + ki * err_integ + kd * err_der;
+
+        // Constrain steering
+        u = fabs(steering) > max_steering ? std::copysignf(max_steering, steering) : steering;
     }
 
 public:
@@ -156,7 +160,7 @@ public:
      * @param acceptable_angle_error angle error at which robot will start to move (robot won't drive forwards as long as angle error is greater than this value)
      * @param loop_rate rate at which program should run
      */
-    DriverAssist(float max_linear = 1.5, float max_angular = TWO_PI, float default_distance_error = 0.2f, float default_angle_error_ = 0.1963495f, float acceptable_angle_error = 0.392699f, int loop_rate = 30) 
+    DriverAssist(float max_linear = 1.0f, float max_angular = 1.0f*PI, float default_distance_error = 0.1f, float default_angle_error_ = 0.0872665f, float acceptable_angle_error = 0.1745329f, int loop_rate = 30) 
                    : node_name_(DriverAssist::rosInit("driver_assist")) 
                    , nh_(ros::NodeHandle())
                    , loop_rate_(ros::Rate(loop_rate))
@@ -172,7 +176,7 @@ public:
                    , traveled_distance_(0.0f)
                    , relative_angle_(0.0f)
                    , prev_rotation_(0.0f)
-                   , angular_pid_(2.0f, 0.3f, 0.1f)
+                   , angular_pid_(1.0f, 0.3f, 0.1f)
                    , linear_pid_(0.5f, 0.2f, 0.1f) {
         ROS_INFO("Starting up %s node:", node_name_.c_str());
 
@@ -391,6 +395,7 @@ public:
      * @param msg Passed automatically by ROS subscriber
      */
     void motorsDataCallback(const tank_controller::motorsData::ConstPtr &msg) {
+        // @todo -> change to chrono timer
         // Enable/disable stop
         stop_ = msg->isStopped;
 
@@ -436,7 +441,7 @@ public:
     /**
      * @brief Function called inside loop to calculate current steering values
      */
-    void calculateSteering() {
+    void doControl() {
         // If has target caluculate position error
         if (!target_queue_.empty()) {
             float angular_error = target_queue_.front().z - relative_angle_;
@@ -444,29 +449,37 @@ public:
 
             // If not stopped calculate steering, otherwise set steering to 0 and send current position errors
             if (!stop_) {
-                // Calculate and constrain angular steering
-                angular_pid_.calculateSteering(angular_error, time_diff_);
-                angular_pid_.u = fabs(angular_pid_.u > max_angular_) ? std::copysignf(max_angular_, angular_pid_.u) : angular_pid_.u;
+                // Pre-calculate some boolean values to avoid multiple operations on floats (and for the code to be more clear)
+                bool angle_ok = fabs(angular_error) < target_queue_.front().z_err;
+                bool angle_acceptable = fabs(angular_error) < moving_angle_error_;
+                bool distance_ok = fabs(linear_error) < target_queue_.front().x_err;
+                bool driving = linear_pid_.u != 0.0f;
 
-                // If robot has just finished rotating (angle error within desired range and linear steering equals to 0)
-                if (linear_pid_.u == 0.0f && abs(angular_error) <= target_queue_.front().z_err) {
-                    // Reset angular pid
-                    angular_pid_.reset();
+                // If both angle and distance are OK that means target was reached
+                if (angle_ok && distance_ok) {
+                    targetReached();
+                
+                // If robot was not driving, rotate until angle is ok    
+                } else if (!driving) {
+                    // Calculate angular steering
+                    angular_pid_.calculateSteering(angular_error, time_diff_, max_angular_);
 
-                    // Calculate and constrain linear steering
-                    linear_pid_.calculateSteering(linear_error, time_diff_);
-                    linear_pid_.u = fabs(linear_pid_.u > max_linear_) ? std::copysignf(max_linear_, linear_pid_.u) : linear_pid_.u;
-                
-                // If robot is moving
-                } else if (linear_pid_.u != 0.0f && abs(angular_error) <= moving_angle_error_) {
-                    // Calculate and constrain linear steering
-                    linear_pid_.calculateSteering(linear_error, time_diff_);
-                    linear_pid_.u = fabs(linear_pid_.u > max_linear_) ? std::copysignf(max_linear_, linear_pid_.u) : linear_pid_.u;
-                
-                // Angle error not in acceptable bounds
+                    if (angle_ok) {
+                        linear_pid_.calculateSteering(linear_error, time_diff_, max_linear_);
+                    } else {
+                        linear_pid_.reset();
+                    }
+
+                // If robot was driving make angle error is acceptable
                 } else {
-                    // Reset linear pid
-                    linear_pid_.reset();
+                    // Calculate angular steering
+                    angular_pid_.calculateSteering(angular_error, time_diff_, max_angular_);
+
+                    if (angle_acceptable) {
+                        linear_pid_.calculateSteering(linear_error, time_diff_, max_linear_);
+                    } else {
+                        linear_pid_.reset();
+                    }
                 }
 
             } else {
@@ -495,7 +508,7 @@ public:
 
         while (ros::ok()) {
             // Calculate current steering
-            calculateSteering();
+            doControl();
 
             // Publish steering and remaining distance
             motorsAutoControlPublish();

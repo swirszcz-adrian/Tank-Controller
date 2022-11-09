@@ -452,6 +452,7 @@ public:
                 // Pre-calculate some boolean values to avoid multiple operations on floats (and for the code to be more clear)
                 bool angle_ok = fabs(angular_error) < target_queue_.front().z_err;
                 bool angle_acceptable = fabs(angular_error) < moving_angle_error_;
+                bool rotating = angular_pid_.u != 0.0f;
                 bool distance_ok = fabs(linear_error) < target_queue_.front().x_err;
                 bool driving = linear_pid_.u != 0.0f;
 
@@ -464,13 +465,16 @@ public:
                     // Calculate angular steering
                     angular_pid_.calculateSteering(angular_error, time_diff_, max_angular_);
 
-                    if (angle_ok) {
-                        linear_pid_.calculateSteering(linear_error, time_diff_, max_linear_);
-                    } else {
+                    if (!angle_ok) {
                         linear_pid_.reset();
+                    } else if (rotating) {
+                        angular_pid_.reset();
+                        linear_pid_.reset();
+                    } else {
+                        linear_pid_.calculateSteering(linear_error, time_diff_, max_linear_);
                     }
 
-                // If robot was driving make angle error is acceptable
+                // If robot was driving make sure angle error is acceptable
                 } else {
                     // Calculate angular steering
                     angular_pid_.calculateSteering(angular_error, time_diff_, max_angular_);

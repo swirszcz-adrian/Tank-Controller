@@ -174,7 +174,7 @@ public:
 
       // Calculate integral, and contrain it to prevent overflow
       // (Yes, I've managed to overflow a float. In fact this controller can do this twice a second if left without constraint)
-      err_integ_ = constrain(err_integ_ + (err * time_delta), -2496.0f, 2496.0f);
+      err_integ_ = target_ != 0.0f ? constrain(err_integ_ + (err * time_delta), -2496.0f, 2496.0f) : 0.0f;
 
       // Calculate control value
       float u = kp_ * err + ki_ * err_integ_;  

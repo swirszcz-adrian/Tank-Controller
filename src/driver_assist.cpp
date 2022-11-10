@@ -10,6 +10,7 @@
 #include <sstream>
 #include <queue>
 #include <math.h>
+#include <chrono>
 
 #define PI 3.14159265359f
 #define TWO_PI 6.28318530718f
@@ -84,11 +85,15 @@ public:
      * @param kp proportional gain
      * @param ki integral gain
      * @param kd derrivative gain
+     * @param max_integ max integral error value
+     * @param max_steering max steering value
      */
-    PIDvariables(const float kp, const float ki, const float kd) 
+    PIDvariables(const float kp, const float ki, const float kd, const float max_integ, const float max_steering) 
                 : kp(kp)
                 , ki(ki)
                 , kd(kd)
+                , max_err_integ(max_integ)
+                , max_u(max_steering)
                 , err_integ(0.0f)
                 , err_prev(0.0f)
                 , u(0.0f) {}
@@ -106,11 +111,11 @@ public:
      * @brief Calculate steering based on internal variables and provided target, process value and time difference
      * @param sp current error
      * @param time_diff time difference between this and past loop
-     * @param max_steering max value of steering
      */
-    void calculateSteering(float err, float time_diff, float max_steering) {
-        // Calculate integral
+    void calculateSteering(float err, float time_diff) {
+        // Calculate and constrain integral
         err_integ = err_integ + (err * time_diff);
+        err_integ = (err_integ <= -max_err_integ ? -max_err_integ : (err_integ >= max_err_integ ? max_err_integ : err_integ));
 
         // Calculate derrivative
         float err_der = (err - err_prev) / time_diff;
@@ -118,17 +123,18 @@ public:
         // Update previous error value
         err_prev = err;
 
-        // Calculate steering
+        // Calculate and constrain steering
         float steering = kp * err + ki * err_integ + kd * err_der;
-
-        // Constrain steering
-        u = fabs(steering) > max_steering ? std::copysignf(max_steering, steering) : steering;
+        u = (steering <= -max_u ? -max_u : (steering >= max_u ? max_u : steering));
     }
 
 public:
     float kp;
     float ki;
     float kd;
+
+    float max_err_integ;
+    float max_u;
 
     float err_integ;
     float err_prev;
@@ -164,21 +170,19 @@ public:
                    : node_name_(DriverAssist::rosInit("driver_assist")) 
                    , nh_(ros::NodeHandle())
                    , loop_rate_(ros::Rate(loop_rate))
-                   , max_linear_(fabs(max_linear))
-                   , max_angular_(fabs(max_angular))
                    , default_distance_error_(default_distance_error)
                    , default_angle_error_(default_angle_error_)
                    , moving_angle_error_(acceptable_angle_error)
                    , stop_(true)
-                   , last_motors_callback_(0.0f)
                    , time_diff_(0.0f)
                    , target_queue_()
                    , traveled_distance_(0.0f)
                    , relative_angle_(0.0f)
                    , prev_rotation_(0.0f)
-                   , angular_pid_(1.0f, 0.3f, 0.1f)
-                   , linear_pid_(0.5f, 0.2f, 0.1f) {
+                   , angular_pid_(1.0f, 0.1f, 0.0f, fabs(max_angular), fabs(0.75f * max_angular))
+                   , linear_pid_(0.5f, 0.175f, 0.1f, fabs(max_linear), fabs(0.75f * max_linear)) {
         ROS_INFO("Starting up %s node:", node_name_.c_str());
+        last_motors_callback_ = std::chrono::high_resolution_clock::now();
 
         // Create service server, that receives requests from /add_relative_target topic and passes them to
         // function addRelativeTargetServer which is a method of DriverAssist class and belongs to "this" object 
@@ -400,8 +404,9 @@ public:
         stop_ = msg->isStopped;
 
         // Update time
-        time_diff_ = (msg->header.stamp - last_motors_callback_).toSec();
-        last_motors_callback_ = msg->header.stamp;
+        std::chrono::high_resolution_clock::time_point current_callback = std::chrono::high_resolution_clock::now();
+        time_diff_ = std::chrono::duration<float>(current_callback - last_motors_callback_).count();
+        last_motors_callback_ = current_callback;
         
         // If not stopped update traveled distance
         if (!stop_) {
@@ -463,7 +468,7 @@ public:
                 // If robot was not driving, rotate until angle is ok    
                 } else if (!driving) {
                     // Calculate angular steering
-                    angular_pid_.calculateSteering(angular_error, time_diff_, max_angular_);
+                    angular_pid_.calculateSteering(angular_error, time_diff_);
 
                     if (!angle_ok) {
                         linear_pid_.reset();
@@ -471,16 +476,16 @@ public:
                         angular_pid_.reset();
                         linear_pid_.reset();
                     } else {
-                        linear_pid_.calculateSteering(linear_error, time_diff_, max_linear_);
+                        linear_pid_.calculateSteering(linear_error, time_diff_);
                     }
 
                 // If robot was driving make sure angle error is acceptable
                 } else {
                     // Calculate angular steering
-                    angular_pid_.calculateSteering(angular_error, time_diff_, max_angular_);
+                    angular_pid_.calculateSteering(angular_error, time_diff_);
 
                     if (angle_acceptable) {
-                        linear_pid_.calculateSteering(linear_error, time_diff_, max_linear_);
+                        linear_pid_.calculateSteering(linear_error, time_diff_);
                     } else {
                         linear_pid_.reset();
                     }
@@ -537,9 +542,6 @@ public:
 
 private:
     std::string node_name_;
-
-    float max_linear_;
-    float max_angular_;
     
     std::queue<relativeTarget> target_queue_;
     float default_distance_error_;
@@ -547,7 +549,7 @@ private:
     float moving_angle_error_;
 
     bool stop_;
-    ros::Time last_motors_callback_;
+    std::chrono::high_resolution_clock::time_point last_motors_callback_;
     float time_diff_;
 
     float traveled_distance_;

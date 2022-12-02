@@ -180,7 +180,7 @@ public:
       float u = kp_ * err + ki_ * err_integ_;  
       
       // Separate and scale control; send data to control function
-      unsigned int val = fabs(u);
+      unsigned int val = int(fabs(u));
       motorCtrl(motor_, u >= 0 ? FORWARD : BACKWARD, val < LOWER_BND ? 0 : (val > UPPER_BND ? UPPER_BND : val));
     }
 

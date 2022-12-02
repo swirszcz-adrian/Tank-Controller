@@ -1,4 +1,4 @@
- // Include ATOMIC_BLOCK macro
+// Include ATOMIC_BLOCK macro
 #include <util/atomic.h>
 
 
@@ -31,8 +31,8 @@ const int pwmpin[2] = {5, 6};   // PWM
 
 // Define encoder pins
 const int encPower[2] = {12, 13};   // Encoders power
-const int encA[2] = {2, 3};         // First encoder
-const int encB[2] = {10, 11};       // Second encoder
+const int encA[2] = {2, 3};         // First channel
+const int encB[2] = {10, 11};       // Second channel
 
 
 // Variable for counting encoder ticks, that occured between program loops

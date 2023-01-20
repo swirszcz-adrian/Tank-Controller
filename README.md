@@ -41,7 +41,7 @@ Instruction on how to connect display can be found [here](https://www.circuitbas
     └── srv                                   # Contains all custom services
 
 # Dependencies and instalation
-This project was originally created on Raspbian Legacy OS and ROS Noetic. Other operating systems should work, as long as you install **[WiringPi (http://wiringpi.com/)** 
+This project was originally created on Raspbian Legacy OS and ROS Noetic. Other operating systems should work, as long as you install **[WiringPi] (http://wiringpi.com/)** 
 library, which is used for communication with display and IMU over GPIO pins and I2C bus. 
 
 Other dependencies include basic ROS packages (roscpp, rospy, std_msgs, message_generartion) and:

@@ -48,7 +48,7 @@ Other dependencies include basic ROS packages (roscpp, rospy, std_msgs, message_
 - [Serial package](http://wjwwood.io/serial/)
 - [SFML library](https://www.sfml-dev.org/)
 
-If you want to use outdated python scripts, please install Python 3 (preferably 3.7.3) as well as [pyame](https://www.pygame.org/news) and [pyserial](https://pypi.org/project/pyserial/)
+If you want to use outdated python scripts, please install Python 3 (preferably 3.7.3) as well as [pyame](https://www.pygame.org/news) and [pyserial](https://pypi.org/project/pyserial/).
 
 **WARNING!**
 Raspberry Pi may have issues while communicating with Adafruit BNO055 IMU over I2C, caused by sensor's **clock-stretching** (not supported by Raspberry's basic I2C bus). 

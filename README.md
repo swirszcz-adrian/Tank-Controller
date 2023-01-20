@@ -20,7 +20,7 @@ Robot was also equipped with Adafruit BNO055 IMU and Raspberry Pi NoIR Camera as
 
 IMU was connected using basic I2C bus.
 
-Instruction on how to connect display can ge found [here](https://www.circuitbasics.com/raspberry-pi-lcd-set-up-and-programming-in-c-with-wiringpi/).
+Instruction on how to connect display can be found [here](https://www.circuitbasics.com/raspberry-pi-lcd-set-up-and-programming-in-c-with-wiringpi/).
 
 # Folder structure
 

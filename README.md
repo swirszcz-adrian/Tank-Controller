@@ -48,12 +48,12 @@ Other dependencies include basic ROS packages (roscpp, rospy, std_msgs, message_
 - [Serial package](http://wjwwood.io/serial/)
 - [SFML library](https://www.sfml-dev.org/)
 
-If you want to use outdated python scripts, please install Python 3 (preferably 3.7.3) as well as [pyame](https://www.pygame.org/news) and [pyserial](https://pypi.org/project/pyserial/).
+If you want to use outdated python scripts, please install Python 3 (preferably 3.7.3) as well as [pygame](https://www.pygame.org/news) and [pyserial](https://pypi.org/project/pyserial/).
 
 **WARNING!**
 Raspberry Pi may have issues while communicating with Adafruit BNO055 IMU over I2C, caused by sensor's **clock-stretching** (not supported by Raspberry's basic I2C bus). 
 To prevent data loss, please lover Rasperry's I2C clock frequency from 100kHz to 20kHz.
 This can be done by adding ```i2c-bcm2708 baudrate=20000``` line to the ```/etc/modules``` file:
 
-Once all dependecies have been installed, and I2C clock frequency has been lowered, you can safely install package by cloning files into your catkin workspace 
+Once all dependencies have been installed, and I2C clock frequency has been lowered, you can safely install package by cloning files into your catkin workspace 
 and running ```catkin_make``` command.

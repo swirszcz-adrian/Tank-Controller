@@ -36,7 +36,7 @@ Instruction on how to connect display can be found [here](https://www.circuitbas
     ├── launch                                # Contains launch file, for starting all project nodes and master node
     ├── msg                                   # Contains all custom messages
     ├── scripts                               # Contains obsolete Python scripts
-    ├── src                                   # Current cpp files resposnble for running all the nodes as well as running tests
+    ├── src                                   # Current cpp files responsible for running all the nodes as well as running tests
     │ └── tank_controller                     # Contains source files for library used for communication with IMU
     └── srv                                   # Contains all custom services
 
